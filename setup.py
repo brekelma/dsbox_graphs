@@ -25,8 +25,8 @@ setup(
     ], 
     entry_points = {
     'd3m.primitives': [
-        #'feature_construction.graph_transformer.Node2Vec = gem:Node2Vec',
-        'feature_construction.graph_transformer.SDNE = gem:SDNE'
+        #'feature_construction.graph_transformer.Node2Vec = graphs:Node2Vec',
+        'feature_construction.graph_transformer.SDNE = graphs:SDNE'
         #'feature_construction.corex_text.CorexText = corex_text:CorexText',
         #'regression.corex_supervised.EchoLinear = echo_regressor:EchoLinearRegression',
         #'classification.corex_supervised.Echo = echo_sae:EchoClassification',
