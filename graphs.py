@@ -3,9 +3,12 @@ import sys
 import typing
 import networkx
 
+import tensorflow as tf
 #from GEM.gem.embedding import node2vec
 from GEM.gem.embedding import sdne
 #from GEM.gem.embedding import sdne_utils
+import keras.models
+import tempfile
 
 from common_primitives import utils
 import d3m.container as container
@@ -13,6 +16,7 @@ import d3m.metadata.base as mbase
 import d3m.metadata.hyperparams as hyperparams
 import d3m.metadata.params as params
 
+from d3m.container import List as d3m_List
 from d3m.container import DataFrame as d3m_DataFrame
 from d3m.metadata.base import PrimitiveMetadata
 from d3m.metadata.hyperparams import Uniform, UniformBool, UniformInt, Union, Enumeration
@@ -21,8 +25,10 @@ from d3m.primitive_interfaces.unsupervised_learning import UnsupervisedLearnerPr
 
 import config as cfg_
 
-
-Input = container.List
+#CUDA_VISIBLE_DEVICES=""
+#Input = container.List
+Input = container.DataFrame
+#Output = container.List #
 Output = container.DataFrame
 #container.List #DataFrame #typing.Union[container.DataFrame, None]
 
@@ -53,6 +59,30 @@ class N2V_Hyperparams(hyperparams.Hyperparams):
     #return_weight: typing.Union[float, int, None]
     #inout_weight: typing.Union[float, int, None]
 
+def make_keras_pickleable():
+    def __getstate__(self):
+        model_str = ""
+        with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
+            keras.models.save_model(self, fd.name, overwrite=True)
+            model_str = fd.read()
+        d = {'model_str': model_str}
+        return d
+
+    def __setstate__(self, state):
+        with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
+            fd.write(state['model_str'])
+            fd.flush()
+            model = keras.models.load_model(fd.name)#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': echo_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})
+        self.__dict__ = model.__dict__
+
+
+    #cls = Sequential
+    #cls.__getstate__ = __getstate__
+    #cls.__setstate__ = __setstate__
+
+    cls = keras.models.Model
+    cls.__getstate__ = __getstate__
+    cls.__setstate__ = __setstate__
 #class
 						 
 						 
@@ -97,6 +127,11 @@ class SDNE_Hyperparams(hyperparams.Hyperparams):
         description = 'first order proximity weight',
         semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
         )
+    return_list = UniformBool(
+        default = False,
+        description='for testing',
+        semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter']
+    )
 
 class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyperparams]):
     """
@@ -147,6 +182,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         self.fitted = False
 
     def fit(self, *, timeout : float = None, iterations : int = None) -> None:
+        make_keras_pickleable()
         if self.fitted:
             return CallResult(None, True, 1)
 
@@ -160,10 +196,13 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         args['xeta'] = 0.001
         args['n_batch'] = 100 #500
         self._args = args
-						 
-        self._model = sdne.SDNE(d = self.hyperparams['dimension'],
-                                alpha = self.hyperparams['alpha'],
-                                beta = self.hyperparams['beta'],
+				
+        dim = self.hyperparams['dimension']
+        alpha = self.hyperparams['alpha']
+        beta = self.hyperparams['beta']		 
+        self._model = sdne.SDNE(d = dim,
+                                alpha = alpha,
+                                beta = beta,
                                 **args)
         print()
         print("***************")
@@ -180,30 +219,47 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         if self.fitted:
             result = self._model._Y
         else:
-            self._model = sdne.SDNE(d = self.hyperparams['dimension'],
-                                    alpha = self.hyperparams['alpha'],
-                                    beta = self.hyperparams['beta'],
-                                    **args)
+            dim = self.hyperparams['dimension']
+            alpha = self.hyperparams['alpha']
+            beta = self.hyperparams['beta']		 
+            self._model = sdne.SDNE(d = dim,
+                                alpha = alpha,
+                                beta = beta,
+                                **args)
+            
+            
         result = self._model.learn_embedding(self.training_data)
         result = result[0]
-        #result_np = container.ndarray(result, generate_metadata = True)
-        result_df = d3m_DataFrame(result, generate_metadata = True)
-        nodeIDs = inputs[1]
-        result_df['nodeID'] = nodeIDs
         
+        if self.hyperparams['return_list']:
+            result_np = container.ndarray(result, generate_metadata = True)
+            return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
+            return CallResult(return_list, True, 1)
+        else:
+            result_df = d3m_DataFrame(result, generate_metadata = True)
+            nodeIDs = inputs[1]
+            result_df['nodeID'] = nodeIDs
+            result_df = d3m_DataFrame(result_df, generate_metadata = True)
+            #col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
+            #col_dict['structural_type'] = type(1.0)
+            # FIXME: assume we apply corex only once per template, otherwise column names might duplicate                                                            
+            #col_dict['name'] = 'corex_' + str(out_df.shape[1] + column_index)
+            #col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
+
+            #corex_df.metadata = corex_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
+            
+            return CallResult(result_df, True, 1)
         
         #inputs[0] = result_np
-        #return CallResult(inputs, True, 1)
-        return CallResult(result_df, True, 1)
-
+        
         # TO DO : continue_fit, timeout
         
-
+    
     def multi_produce(self, *, produce_methods: typing.Sequence[str], inputs: Input, timeout: float = None, iterations: int = None) -> MultiCallResult:
         return self._multi_produce(produce_methods=produce_methods, timeout=timeout, iterations=iterations, inputs=inputs)
 
     def fit_multi_produce(self, *, produce_methods: typing.Sequence[str], inputs: Input, timeout : float = None, iterations : int = None) -> MultiCallResult:
-        return self._fit_multi_produce(produce_methods=produce_methods, timeout=timeout, iterations=iterations, inputs=inputs, outputs = None)
+        return self._fit_multi_produce(produce_methods=produce_methods, timeout=timeout, iterations=iterations, inputs=inputs)
 
     def get_params(self) -> SDNE_Params:
         return SDNE_Params(
@@ -213,3 +269,9 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
     def set_params(self, *, params: SDNE_Params) -> None:
         self.fitted = params['fitted']
         self._model = params['model']
+
+    #def __copy__(self):
+    #    new = SDNE()
+
+    #def __deepcopy__(self):
+        
