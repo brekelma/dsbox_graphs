@@ -1,0 +1,19 @@
+{
+  "train": {
+    "split": {
+      "type": "StratifiedKFold",
+      "n_splits": 3,
+      "shuffle": true
+    },
+    "score": {
+      "metric": "accuracy",
+      "value": 0.4864564037903618
+    }
+  },
+  "test": {
+    "score": {
+      "metric": "accuracy",
+      "value": 0.4837758112094395
+    }
+  }
+}

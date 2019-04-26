@@ -1,0 +1,21 @@
+{
+  "train": {
+    "split": {
+      "type": "KFold",
+      "n_splits": 10,
+      "shuffle": true,
+      "random_state": 0
+    },
+    "score": {
+      "metric": "meanSquaredError",
+      "average": "mean",
+      "value": 0.21274722442903662
+    }
+  },
+  "test": {
+    "score": {
+      "metric": "meanSquaredError",
+      "value": 0.1451339896838553
+    }
+  }
+}
