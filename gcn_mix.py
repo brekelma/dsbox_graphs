@@ -160,8 +160,8 @@ class GCN(UnsupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperp
         "name": "GCN",
         "description": "graph convolutional network",
         # ask about naming convention
-        "python_path": "d3m.primitives.feature_construction.graph_transformer.SDNE",
-        "original_python_path": "gem.gem",
+        "python_path": "d3m.primitives.feature_construction.graph_transformer.GCN",
+        "original_python_path": "gcn_mix.GCN",
         "source": {
             "name": "ISI",
             "contact": "mailto:brekelma@usc.edu",
