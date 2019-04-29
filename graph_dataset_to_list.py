@@ -11,7 +11,7 @@ import common_primitives
 __all__ = ('GraphDatasetToList',)
 
 Inputs = container.Dataset
-Outputs = container.DataFrame
+Outputs = container.List
 
 
 class Hyperparams(hyperparams.Hyperparams):
@@ -36,7 +36,7 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
             'python_path': 'd3m.primitives.data_transformation.graph_to_edge_list.DSBOX',
             'source': {
                 'name': 'Rob Brekelmans',
-                'contact': 'brekelma@usc.edu',
+                'contact': 'mailto:brekelma@usc.edu',
                 'uris': [
                     'https://gitlab.com/brekelma/dsbox_graphs/graph_dataset_to_list.py'
                     #'https://gitlab.com/datadrivendiscovery/common-primitives/blob/master/common_primitives/dataset_to_dataframe.py',
@@ -75,7 +75,8 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
         assert isinstance(nodes_df, container.DataFrame), type(nodes_df)
         assert isinstance(edges_df, container.DataFrame), type(edges_df)
 
-        return_list = container.List([learning_df, nodes_df, edges_df], generate_metadata = True)
+        #return_list = container.List([learning_df, nodes_df, edges_df], generate_metadata = True)
+        return_list = container.List([nodes_df, edges_df], generate_metadata = True)
         return base.CallResult(return_list)
 
     # @classmethod

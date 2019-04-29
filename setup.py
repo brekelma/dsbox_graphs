@@ -27,7 +27,7 @@ setup(
     'd3m.primitives': [
         #'feature_construction.graph_transformer.Node2Vec = graphs:Node2Vec',
         'feature_construction.graph_transformer.SDNE = graphs:SDNE',
-	'data_transformation.graph_to_edge_list.DSBOX = graph_dataset_to_list:GraphDatasetToList'
+	'data_transformation.graph_to_edge_list.DSBOX = graph_dataset_to_list:GraphDatasetToList',
 	'feature_construction.graph_transformer.GCN = gcn_mix:GCN'
         #'feature_construction.corex_text.CorexText = corex_text:CorexText',
         #'regression.corex_supervised.EchoLinear = echo_regressor:EchoLinearRegression',

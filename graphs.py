@@ -26,8 +26,8 @@ from d3m.primitive_interfaces.unsupervised_learning import UnsupervisedLearnerPr
 import config as cfg_
 
 #CUDA_VISIBLE_DEVICES=""
-#Input = container.List
-Input = container.DataFrame
+Input = container.List
+#Input = container.DataFrame
 #Output = container.List #
 Output = container.DataFrame
 #container.List #DataFrame #typing.Union[container.DataFrame, None]
@@ -83,8 +83,28 @@ def make_keras_pickleable():
     cls = keras.models.Model
     cls.__getstate__ = __getstate__
     cls.__setstate__ = __setstate__
-#class
-						 
+
+def loadGraphFromEdgeDF(df, directed=True):
+    print()
+    print("LOADING FROM EDGE LIST DF ")
+    print(df.columns)
+    print(df.values.shape)
+    print()
+    for row in range(df.values.shape[0]):
+        # n_nodes = f.readline()
+        # f.readline() # Discard the number of edges
+        if directed:
+            G = nx.DiGraph()
+        else:
+            G = nx.Graph()
+        for col in range(df.values[row,:].shape):
+            edge = line.strip().split()
+            if len(edge) == 3:
+                w = float(edge[2])
+            else:
+                w = 1.0
+            G.add_edge(int(edge[0]), int(edge[1]), weight=w)
+    return G					 
 						 
 class SDNE_Params(params.Params):
     fitted: typing.Union[bool, None]
@@ -161,7 +181,20 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         super(SDNE, self).__init__(hyperparams = hyperparams)
         # nu1 = 1e-6, nu2=1e-6, K=3,n_units=[500, 300,], rho=0.3, n_iter=30, xeta=0.001,n_batch=500
 	
+
+
+
     def set_training_data(self, *, inputs : Input) -> None:
+        if len(inputs) == 3:
+            learning_df = inputs[0]
+            nodes_df = inputs[1]
+            edges_df = inputs[-2]
+        elif len(inputs) == 2:
+            nodes_df = inputs[1]
+            edges_df = inputs[-2]
+        else:
+            raise ValueError("INPUTS to SDNE should be length 2 or 3 (?) ", len(inputs))
+
         G = inputs[0].copy()
         if type(G) == networkx.classes.graph.Graph:
             if networkx.is_weighted(G):
