@@ -3,6 +3,5 @@ __path__ = extend_path(__path__, __name__)
 from config import *
 import GEM
 import gem
-import mixhop
-import gcn
-
+import gcn_mix
+import graph_dataset_to_list
