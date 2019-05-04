@@ -31,11 +31,11 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
     metadata = metadata_base.PrimitiveMetadata(
         {
             'id': '4b42ce1e-9b98-4a25-b68e-fad13311eb65',
-            'version': '0.3.0',
+            'version': '1.0.0',
             'name': "Extract graph tables from Dataset into list of DataFrame",
             'python_path': 'd3m.primitives.data_transformation.graph_to_edge_list.DSBOX',
             'source': {
-                'name': 'Rob Brekelmans',
+                'name': 'ISI',
                 'contact': 'mailto:brekelma@usc.edu',
                 'uris': [
                     'https://gitlab.com/brekelma/dsbox_graphs/graph_dataset_to_list.py'
