@@ -57,11 +57,16 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
     )
 
     def produce(self, *, inputs: Inputs, timeout: float = None, iterations: int = None) -> base.CallResult[Outputs]:
-        learning_id, learning_df = base_utils.get_tabular_resource(inputs, 'learning_data')
         try:
-            nodes_id, nodes_id = base_utils.get_tabular_resource(inputs, '0_nodes')
+            learning_id, learning_df = base_utils.get_tabular_resource(inputs, 'learningData')
         except:
-            nodes_id, nodes_id = base_utils.get_tabular_resource(inputs, 'nodes')
+            pass
+        print('resources ?? ', inputs.keys())
+        
+        try:
+            nodes_id, nodes_df = base_utils.get_tabular_resource(inputs, '0_nodes')
+        except:
+            nodes_id, nodes_df = base_utils.get_tabular_resource(inputs, 'nodes')
         try:
             edges_id, edges_df = base_utils.get_tabular_resource(inputs, '0_edges')
         except:
@@ -75,33 +80,36 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
         assert isinstance(nodes_df, container.DataFrame), type(nodes_df)
         assert isinstance(edges_df, container.DataFrame), type(edges_df)
 
-        #return_list = container.List([learning_df, nodes_df, edges_df], generate_metadata = True)
-        return_list = container.List([nodes_df, edges_df], generate_metadata = True)
+        #learning_df.index.name = 'd3mIndex'
+        print('learning df ')
+        print(learning_df)
+        return_list = container.List([learning_df, nodes_df, edges_df], generate_metadata = True)
+        #return_list = container.List([nodes_df, edges_df], generate_metadata = True)
         return base.CallResult(return_list)
 
-    # @classmethod
-    # def _update_metadata(cls, metadata: metadata_base.DataMetadata, resource_id: metadata_base.SelectorSegment) -> metadata_base.DataMetadata:
-    #     resource_metadata = dict(metadata.query((resource_id,)))
+    @classmethod
+    def _update_metadata(cls, metadata: metadata_base.DataMetadata, resource_id: metadata_base.SelectorSegment) -> metadata_base.DataMetadata:
+        resource_metadata = dict(metadata.query((resource_id,)))
 
-    #     if 'structural_type' not in resource_metadata or not issubclass(resource_metadata['structural_type'], container.DataFrame):
-    #         raise TypeError("The Dataset resource is not a DataFrame, but \"{type}\".".format(
-    #             type=resource_metadata.get('structural_type', None),
-    #         ))
+        if 'structural_type' not in resource_metadata or not issubclass(resource_metadata['structural_type'], container.DataFrame):
+            raise TypeError("The Dataset resource is not a DataFrame, but \"{type}\".".format(
+                type=resource_metadata.get('structural_type', None),
+            ))
 
-    #     resource_metadata.update(
-    #         {
-    #             'schema': metadata_base.CONTAINER_SCHEMA_VERSION,
-    #         },
-    #     )
+        resource_metadata.update(
+            {
+                'schema': metadata_base.CONTAINER_SCHEMA_VERSION,
+            },
+        )
 
-    #     new_metadata = metadata_base.DataMetadata(resource_metadata)
+        new_metadata = metadata_base.DataMetadata(resource_metadata)
 
-    #     new_metadata = metadata.copy_to(new_metadata, (resource_id,))
+        new_metadata = metadata.copy_to(new_metadata, (resource_id,))
 
-    #     # Resource is not anymore an entry point.
-    #     new_metadata = new_metadata.remove_semantic_type((), 'https://metadata.datadrivendiscovery.org/types/DatasetEntryPoint')
+        # Resource is not anymore an entry point.
+        new_metadata = new_metadata.remove_semantic_type((), 'https://metadata.datadrivendiscovery.org/types/DatasetEntryPoint')
 
-    #     return new_metadata
+        return new_metadata
 
     # @classmethod
     # def can_accept(cls, *, method_name: str, arguments: typing.Dict[str, typing.Union[metadata_base.Metadata, type]],

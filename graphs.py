@@ -2,6 +2,7 @@ import os
 import sys
 import typing
 import networkx
+import numpy as np
 
 import tensorflow as tf
 #from GEM.gem.embedding import node2vec
@@ -9,6 +10,11 @@ from GEM.gem.embedding import sdne
 #from GEM.gem.embedding import sdne_utils
 import keras.models
 import tempfile
+from scipy.sparse import csr_matrix
+from sklearn.preprocessing import LabelEncoder
+
+from d3m.base import utils as base_utils
+
 
 from common_primitives import utils
 import d3m.container as container
@@ -84,31 +90,57 @@ def make_keras_pickleable():
     cls.__getstate__ = __getstate__
     cls.__setstate__ = __setstate__
 
+def get_columns_of_type(df, semantic_types):
+        columns = df.metadata.list_columns_with_semantic_types(semantic_types)
+
+        def can_use_column(column_index: int) -> bool:
+                return column_index in columns
+
+        # hyperparams['use_columns'], hyperparams['exclude_columns']                                                                                                                           
+        columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) # metadata, include, exclude_columns, idx_function                         
+
+        if not columns_to_use:
+                raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(
+                        semantic_types=semantic_types,
+                ))
+        
+        return df.select_columns(columns_to_use)
+
+
 def loadGraphFromEdgeDF(df, directed=True):
-    print()
-    print("LOADING FROM EDGE LIST DF ")
-    print(df.columns)
-    print(df.values.shape)
-    print()
-    for row in range(df.values.shape[0]):
-        # n_nodes = f.readline()
-        # f.readline() # Discard the number of edges
-        if directed:
-            G = nx.DiGraph()
-        else:
-            G = nx.Graph()
-        for col in range(df.values[row,:].shape):
-            edge = line.strip().split()
-            if len(edge) == 3:
-                w = float(edge[2])
-            else:
-                w = 1.0
-            G.add_edge(int(edge[0]), int(edge[1]), weight=w)
+    graphtype = networkx.DiGraph if directed else networkx.Graph
+
+    G = networkx.from_pandas_edgelist(df, edge_attr=True)#, create_using= graph_type)
+    # for row in range(df.values.shape[0]):
+    #     # n_nodes = f.readline()
+    #     # f.readline() # Discard the number of edges
+    #     if directed:
+    #         G = networkx.DiGraph()
+    #     else:
+    #         G = networkx.Graph()
+    #     #for col in range(df.values[row,:].shape):
+    #         #edge = line.strip().split()
+    #         #if len(edge) == 3:
+    #         #    w = float(edge[2])
+    #         #else:
+    #         #    w = 1.0
+    #     w = 1.0
+    #     s  =int(df.iloc[row, df.columns.get_loc('source')])
+    #     t  =int(df.iloc[row, df.columns.get_loc('target')])
+    #     G.add_edge(s, t, weight=w)
+    #     #source_types = ('https://metadata.datadrivendiscovery.org/types/EdgeSource',
+    #     #                'https://metadata.datadrivendiscovery.org/types/DirectedEdgeSource',
+    #     #                'https://metadata.datadrivendiscovery.org/types/UndirectedEdgeSource',
+    #     #                'https://metadata.datadrivendiscovery.org/types/SimpleEdgeSource',
+    #     #                'https://metadata.datadrivendiscovery.org/types/MultiEdgeSource')
+    #     #sources = get_columns_of_type(edges_df, source_types
+    #)
     return G					 
 						 
 class SDNE_Params(params.Params):
     fitted: typing.Union[bool, None]
     model: typing.Union[sdne.SDNE, None]
+    node_enc: typing.Union[LabelEncoder, None]
 # SDNE takes embedding dimension (d), 
 # seen edge reconstruction weight (beta), 
 # first order proximity weight (alpha), 
@@ -181,37 +213,83 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         super(SDNE, self).__init__(hyperparams = hyperparams)
         # nu1 = 1e-6, nu2=1e-6, K=3,n_units=[500, 300,], rho=0.3, n_iter=30, xeta=0.001,n_batch=500
 	
+    def _make_adjacency(self, edges_df, num_nodes, tensor = True):
+
+        source_types = ('https://metadata.datadrivendiscovery.org/types/EdgeSource',
+                        'https://metadata.datadrivendiscovery.org/types/DirectedEdgeSource',
+                        'https://metadata.datadrivendiscovery.org/types/UndirectedEdgeSource',
+                        'https://metadata.datadrivendiscovery.org/types/SimpleEdgeSource',
+                        'https://metadata.datadrivendiscovery.org/types/MultiEdgeSource')
+        sources = get_columns_of_type(edges_df, source_types)
+
+        dest_types = ('https://metadata.datadrivendiscovery.org/types/EdgeTarget',
+                      'https://metadata.datadrivendiscovery.org/types/DirectedEdgeTarget',
+                      'https://metadata.datadrivendiscovery.org/types/UndirectedEdgeTarget',
+                      'https://metadata.datadrivendiscovery.org/types/SimpleEdgeTarget',
+                      'https://metadata.datadrivendiscovery.org/types/MultiEdgeTarget')
+        dests = get_columns_of_type(edges_df, dest_types)
 
 
+        attr_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
+                      'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
+        attrs = get_columns_of_type(edges_df, attr_types)
+        
 
-    def set_training_data(self, *, inputs : Input) -> None:
+        sources = self.node_enc.transform(sources.values)
+        dests = self.node_enc.transform(dests.values)
+
+
+        if tensor:
+            try:
+                adj = tf.SparseTensor([[sources.values[i, 0], dests.values[i,0]] for i in range(sources.values.shape[0])], [1.0 for i in range(sources.values.shape[0])], dense_shape = (num_nodes, num_nodes)) 
+            except:
+                adj = tf.SparseTensor([[sources[i], dests[i]] for i in range(sources.shape[0])], [1.0 for i in range(sources.shape[0])], dense_shape = (num_nodes, num_nodes)) 
+        else:
+            try:
+                adj = csr_matrix(([1.0 for i in range(sources.values.shape[0])], ([sources.values[i, 0] for i in range(sources.values.shape[0])], [dests.values[i,0] for i in range(sources.values.shape[0])])), shape = (num_nodes, num_nodes))
+            except:
+                adj = csr_matrix(([1.0 for i in range(sources.shape[0])], ([sources[i] for i in range(sources.shape[0])], [dests[i] for i in range(sources.shape[0])])), shape = (num_nodes, num_nodes))
+        return adj
+    
+    def _parse_inputs(self, inputs : Input):
         if len(inputs) == 3:
+            # network x list remnant
+            #graph = inputs[0]
             learning_df = inputs[0]
             nodes_df = inputs[1]
-            edges_df = inputs[-2]
+            edges_df = inputs[-1]
         elif len(inputs) == 2:
-            nodes_df = inputs[1]
-            edges_df = inputs[-2]
+            nodes_df = inputs[0]
+            edges_df = inputs[-1]
         else:
             raise ValueError("INPUTS to SDNE should be length 2 or 3 (?) ", len(inputs))
+        
+            
+        try:
+            G = graph
+        except:
+            try:
+                G = loadGraphFromEdgeDF(edges_df)
+            except Exception as e:
+                print()
+                print("***************** LOADING GRAPH FROM EDGE LIST error ************", e)
+                print()
 
-        G = inputs[0].copy()
-        if type(G) == networkx.classes.graph.Graph:
-            if networkx.is_weighted(G):
-                E = int(networkx.number_of_edges(G))
-                #g = self._pass_to_ranks(G, nedges = E)
-            else:
-                E = int(networkx.number_of_edges(G))
-                g = networkx.to_numpy_array(G)
-        elif type(G) is np.ndarray:
-            G = networkx.to_networkx_graph(G)
-            E = int(networkx.number_of_edges(G))
-            #g = self._pass_to_ranks(G, nedges = E)
-        else:
-            raise ValueError("networkx Graph and n x d numpy arrays only")
+        #self.training_data = G
 
-        self.training_data = G
-        #self.training_data = inputs
+        self.node_enc = LabelEncoder()
+
+        id_col = [i for i in nodes_df.columns if 'node' in i and 'id' in i.lower()][0]
+        self.node_enc.fit(nodes_df[id_col].values)
+
+        other_training_data = self._make_adjacency(edges_df, nodes_df.shape[0], tensor = False)
+        return other_training_data
+
+    def set_training_data(self, *, inputs : Input) -> None:
+
+        training_data = self._parse_inputs(inputs)
+        self.training_data = networkx.from_scipy_sparse_matrix(training_data)
+
         self.fitted = False
 
     def fit(self, *, timeout : float = None, iterations : int = None) -> None:
@@ -237,20 +315,16 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                                 alpha = alpha,
                                 beta = beta,
                                 **args)
-        print()
-        print("***************")
-        print(self.training_data)
-        print(type(self.training_data))
-        print("***************")
-        self._model.learn_embedding(self.training_data)
+        self._model.learn_embedding(graph = self.training_data)
         
+
         self.fitted = True
         return CallResult(None, True, 1)
 						 
 						 
     def produce(self, *, inputs : Input, timeout : float = None, iterations : int = None) -> CallResult[Output]:
         if self.fitted:
-            result = self._model._Y
+            result = self._model._Y #produce( )#_Y
         else:
             dim = self.hyperparams['dimension']
             alpha = self.hyperparams['alpha']
@@ -259,20 +333,69 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                                 alpha = alpha,
                                 beta = beta,
                                 **args)
+        
+        
+        if len(inputs) == 3:
+            # network x list remnant
+            #graph = inputs[0]
+            learning_df = inputs[0]
+            nodes_df = inputs[1]
+            edges_df = inputs[-1]
+        elif len(inputs) == 2:
+            nodes_df = inputs[0]
+            edges_df = inputs[-1]
+        else:
+            raise ValueError("INPUTS to SDNE should be length 2 or 3 (?) ", len(inputs))
+
+
             
-            
-        result = self._model.learn_embedding(self.training_data)
-        result = result[0]
+            #result = self._model.learn_embedding(self.training_data)
+            #result = result[0]
         
         if self.hyperparams['return_list']:
             result_np = container.ndarray(result, generate_metadata = True)
             return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
             return CallResult(return_list, True, 1)
         else:
+
+
+        
+        
             result_df = d3m_DataFrame(result, generate_metadata = True)
-            nodeIDs = inputs[1]
-            result_df['nodeID'] = nodeIDs
-            result_df = d3m_DataFrame(result_df, generate_metadata = True)
+            result_df = learning_df.astype(np.int32).join(result_df, on = 'd3mIndex')
+        
+
+            for column_index in range(result_df.shape[1]):
+                col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
+                #if column_index == 0:
+                #    col_dict['name'] = 'nodeID'
+                #else:
+                col_dict['name'] = 'sdne_' + str(learning_df.shape[1] + column_index)
+                col_dict['structural_type'] = type(1.0)
+            #    # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
+                col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
+
+            result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
+      
+            
+            final_df = result_df
+      
+            #append_cols = result_df.loc[learning_df.index]
+            #print('APPENDING COLS ', append_cols.shape)
+            #print(append_cols.columns)
+            #print(append_cols)
+            #final_df =  utils.append_columns(learning_df, append_cols)
+            #print('FINAL DF ', final_df.shape)
+            #print(final_df)
+            #result_df.index = [learning_df.index[learning_df[nodeid]==result_df.values[i,0]] for i in range(result_df.values.shape[0])]
+            ##result_df.index = learning_df.index.copy()
+            #learning_df = utils.append_columns(learning_df, result_df)
+            
+            # going to return one dataframe (node or edge depending on task)
+            
+            # add column for node ID ?
+            #nodeIDs = inputs[1]
+            #result_df['nodeID'] = nodeIDs
             #col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
             #col_dict['structural_type'] = type(1.0)
             # FIXME: assume we apply corex only once per template, otherwise column names might duplicate                                                            
@@ -281,7 +404,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
 
             #corex_df.metadata = corex_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
             
-            return CallResult(result_df, True, 1)
+            return CallResult(final_df, True, 1)
         
         #inputs[0] = result_np
         
@@ -297,12 +420,14 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
     def get_params(self) -> SDNE_Params:
         return SDNE_Params(
             fitted = self.fitted,
-            model = self._model)
+            model = self._model,
+            node_enc = self.node_enc
+        )
 	
     def set_params(self, *, params: SDNE_Params) -> None:
         self.fitted = params['fitted']
         self._model = params['model']
-
+        self.node_enc = params['node_enc']
     #def __copy__(self):
     #    new = SDNE()
 
