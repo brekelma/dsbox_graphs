@@ -51,7 +51,8 @@ class GCN_Params(params.Params):
 
         fitted: typing.Union[bool, None] # fitted required, set once primitive is trained
         model: typing.Union[keras.models.Model, None]
-        adj: typing.Union[tf.Tensor, tf.SparseTensor, tf.Variable, keras.layers.Input, None]
+        adj: typing.Union[tf.Tensor, tf.SparseTensor, tf.Variable, keras.layers.Input, np.ndarray, csr_matrix, None]
+        weights: typing.Union[typing.Any, None]
 
 class GCN_Hyperparams(hyperparams.Hyperparams):
 
@@ -92,51 +93,16 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
 
 # all primitives must be pickle-able, and this should do the trick for Keras models
 
-def make_keras_pickleable():
-        def __getstate__(self):
-                #setattr(gcn_layer, '__deepcopy__', lambda self, _: self)
-                #setattr(GCN, '__deepcopy__', lambda self, _: self)
-
-        
-                model_str = ""
-                with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
-                        keras.models.save_model(self, fd.name, overwrite=True)
-                        model_str = fd.read()
-                d = {'model_str': model_str}
-                return d
-
-        def __setstate__(self, state):
-                with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
-                        fd.write(state['model_str'])
-                        fd.flush()
-                        model = keras.models.load_model(fd.name, custom_objects = {'tf': tf, 'GCN_Layer': GCN_Layer}) #'features': tf.sparse_placeholder(tf.float32, shape=tf.constant(features[2], dtype=tf.int64)),
-        #     'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
-        #     'labels_mask': tf.placeholder(tf.int32),
-        #     'dropout': tf.placeholder_with_default(0., shape=()),
-        #     'num_features_nonzero': tf.placeholder(tf.int32)  # helper variable for sparse dropout
-        #       } 
-
-        
-        #self.__dict__ = model.__dict__
-        
-        #cls = Sequential
-        #cls.__getstate__ = __getstate__
-        #cls.__setstate__ = __setstate__
-
-        cls = keras.models.Model
-        cls.__getstate__ = __getstate__
-        cls.__setstate__ = __setstate__
-
 
 
 def dot(x, y, sparse=False):
         """Wrapper for tf.matmul (sparse vs dense)."""
         if sparse:
-                #try:
-                res = tf.sparse_tensor_dense_matmul(x, y)
-                #except:
-                       # x = tf.contrib.layers.dense_to_sparse(x)
-                       # res = tf.sparse_tensor_dense_matmul(x, y)
+                try:
+                        res = tf.sparse_tensor_dense_matmul(x, y)
+                except:
+                        x = tf.contrib.layers.dense_to_sparse(x)
+                        res = tf.sparse_tensor_dense_matmul(x, y)
         else:
                 res = tf.matmul(x, y)
         return res
@@ -145,7 +111,7 @@ def sparse_exp_ax(adj, x, exponent = 1):
         res = x
         if exponent == 0:
                 return res
-
+       
         for k in range(exponent):
                 res = dot(adj, res, sparse = True)
         return res
@@ -174,7 +140,7 @@ def get_columns_of_type(df, semantic_types):
 class GCN_Layer(keras.layers.Layer):
         def __init__(self, k = 1, adj = None, pre_w = None, **kwargs):
                 self.k = k
-                self.adjacency = adj
+                self.adj = adj
                 self.pre_w = None
                 super(GCN_Layer, self).__init__(**kwargs)
 
@@ -183,12 +149,12 @@ class GCN_Layer(keras.layers.Layer):
                 
         def call(self, inputs):
                 if isinstance(inputs,list):
-                        adj = inputs[-1]
+                        self.adj = inputs[-1]
                         x = inputs[0]
                 else:
                         x = inputs
-                        adj = self.adjacency
-                return sparse_exp_ax(adj, x, exponent = self.k)
+
+                return sparse_exp_ax(self.adj, x, exponent = self.k)
                 
         def compute_output_shape(self, input_shape):
                 return input_shape if not isinstance(input_shape, list) else input_shape[0]
@@ -198,6 +164,36 @@ class GCN_Layer(keras.layers.Layer):
 #        # keras wrapper for sparse mult
 #        # exponent for mixhop  
 #       return sparse_exp_ax(adj, x, exponent = k)      
+
+def make_keras_pickleable():
+        def __getstate__(self):
+                #setattr(gcn_layer, '__deepcopy__', lambda self, _: self)
+                #setattr(GCN, '__deepcopy__', lambda self, _: self)
+
+        
+                model_str = ""
+                with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
+                        keras.models.save_model(self, fd.name, overwrite=True)
+                        model_str = fd.read()
+                d = {'model_str': model_str}
+                return d
+
+        def __setstate__(self, state):
+                with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
+                        fd.write(state['model_str'])
+                        fd.flush()
+                        model = keras.models.load_model(fd.name, custom_objects = {'tf': tf, 'GCN_Layer': GCN_Layer})
+                        self.__dict__ = model.__dict__
+                
+        
+        #cls = Sequential
+        #cls.__getstate__ = __getstate__
+        #cls.__setstate__ = __setstate__
+
+        cls = keras.models.Model
+        cls.__getstate__ = __getstate__
+        cls.__setstate__ = __setstate__
+
 
 
 
@@ -225,7 +221,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 "installation": [ cfg_.INSTALLATION ],
 
                 # See possible types here :https://gitlab.com/datadrivendiscovery/d3m/blob/devel/d3m/metadata/schemas/v0/definitions.json
-                "algorithm_types": ["EXPECTATION_MAXIMIZATION_ALGORITHM", "LATENT_DIRICHLET_ALLOCATION"],
+                "algorithm_types": ["CONVOLUTIONAL_NEURAL_NETWORK"],
                 "primitive_family": "FEATURE_CONSTRUCTION",
                 "hyperparams_to_tune": ["dimension", "beta", "alpha"]
         })
@@ -235,8 +231,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
         
         def set_training_data(self, *, inputs : Input, outputs : Output) -> None:
-                self._adj = None
-                self._input = None
+                #self._adj = None
+                #self._input = None
 
                 learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
                 
@@ -245,8 +241,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
 
                 self._num_training_nodes = node_subset.values.shape[0]
-                self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-                self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])#, node_subset = node_subset)
+                self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
+                self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])#, node_subset = node_subset)
 
                 # dealing with outputs
                 #if self._task in ['clf', 'class', 'classification', 'node_clf']:
@@ -259,9 +255,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 else:
                         targets =  get_columns_of_type(learning_df, target_types)
                         
-
                 
-
                 self._label_unique = np.unique(targets.values).shape[0]
                 self.label_encode = LabelEncoder()
                 self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
@@ -272,7 +266,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 self.fitted = False
 
-        def _make_adjacency(self, edges_df, num_nodes = None, tensor = True, node_subset = None):
+        def _make_adjacency(self, edges_df, num_nodes = None, tensor = False, #True, 
+                            node_subset = None):
                 
 
                 source_types = ('https://metadata.datadrivendiscovery.org/types/EdgeSource',
@@ -328,8 +323,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         adj = csr_matrix(([1.0 for i in range(sources.values.shape[0])], ([sources.values[i, 0] for i in range(sources.values.shape[0])], [dests.values[i,0] for i in range(sources.values.shape[0])])), shape = (num_nodes, num_nodes), dtype = np.float32)
                 #tf.sparse.placeholder(dtype,shape=None,name=None)
         
-                #if self._adj is None:
+                return adj
+                # PREVIOUS RETURN
                 self._adj = keras.layers.Input(tensor = adj if tensor else tf.convert_to_tensor(adj), sparse = True)
+
+                #if self._adj is None:                
                 #else:
                         #self._adj = #tf.assign(self._adj, adj if tensor else tf.convert_to_tensor(adj))
                         
@@ -337,13 +335,14 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 #raise NotImplementedError
                 #return keras.layers.Input()
 
-        def _make_input_features(self, nodes_df, tensor = True):
+        def _make_input_features(self, nodes_df, tensor = False):# tensor = True):
         
                 if tensor:
                         node_id = tf.cast(tf.eye(nodes_df.shape[0]), dtype = tf.float32)
                         #node_id = tf.sparse.eye(nodes_df.shape[0])
                 else:
-                        node_id = scipy.sparse.identity(nodes_df.shape[0], dtype = np.float32) #np.eye(nodes_df.shape[0])
+                        #node_id = scipy.sparse.identity(nodes_df.shape[0], dtype = np.float32) #
+                        node_id = np.eye(nodes_df.shape[0])
 
                 # preprocess features, e.g. if non-numeric / text?
                 if len(nodes_df.columns) > 2:
@@ -351,17 +350,18 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                                           'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
 
                         features = get_columns_of_type(nodes_df, semantic_types).values.astype(np.float32)
+                        
                         if tensor:
                                 features = tf.convert_to_tensor(features)
                                 to_return= tf.concat([features, node_id], -1)
                         else:
-                                to_return=np.concatenate([features, node_id])
+                                to_return=np.concatenate([features, node_id], axis = -1)
                 else:
                         to_return = node_id
                 
-
+                return to_return
                 #if self._input is None:
-                self._input = keras.layers.Input(tensor = to_return if tensor else tf.convert_to_tensor(node_id))
+                self._input = keras.layers.Input(tensor = to_return if tensor else tf.convert_to_tensor(to_return))
                 #else:
                 #        tf.assign(self._input, to_return if tensor else tf.convert_to_tensor(to_return))
 
@@ -387,9 +387,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 self._extra_fc = 100 
                 # self._adj and self._input already set as keras Input tensors
 
-                embedding = self._make_gcn(h_dims = self._units,
-                                           mix_hops = self._mix_hops, 
-                                           modes = self._modes)
+                adj_input = keras.layers.Input(shape = self._adj.shape[1:], name = 'adjacency', sparse = True)
+                feature_input = keras.layers.Input(shape = self._input.shape[1:], name = 'features')#sparse =True) #tensor =  if tensor else tf.convert_to_tensor(to_return))
+                embedding = self._make_gcn(adj_input, feature_input,
+                        h_dims = self._units,
+                        mix_hops = self._mix_hops, 
+                        modes = self._modes)
 
                 #self._embedding_model = keras.models.Model(inputs = self._input, outputs = embedding)
                 # make_task
@@ -418,11 +421,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 loss_weights.append(1.0)
 
                 # fit keras
-                self.model = keras.models.Model(inputs = self._input, outputs = outputs)
+                self.model = keras.models.Model(inputs = [adj_input, feature_input], outputs = outputs)
                 self.model.compile(optimizer = self._optimizer, loss = loss_functions, loss_weights = loss_weights)
 
-                self.model.fit([], # already specified as tensors
-                        [self.training_outputs]*len(outputs),                               
+                self.model.fit([self._adj, self._input], # already specified as tensors
+                               [self.training_outputs]*len(outputs),                               
                                shuffle = False, epochs = self._epochs, batch_size = self._num_training_nodes) # validation_data = [
 
                 self.fitted = True
@@ -446,26 +449,27 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                                  
         def produce(self, *, inputs : Input, outputs : Output, timeout : float = None, iterations : int = None) -> CallResult[Output]:
                 if self.fitted:
-                        # just takes embedding of model
-                        # result = self._model._Y
-                        
                         # embed ALL (even unlabelled examples)
                         learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
                         node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+                                        
+                        adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
+                        inp = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]) #.index])
                         
-                        #self.node_enc = LabelEncoder()
-                        #id_col = [i for i in learning_df.columns if 'node' in i and 'id' in i.lower()][0]
-                        #self.node_enc.fit(learning_df[id_col].values)
-                
-                        self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-                        self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]) #.index])
                         #result = self._embedding_model.predict()
                         return_embedding = False
-                        output = self.model.layers[-2].output if return_embedding else self.model.layers[-1].output        # all layer outputs
-                        func = K.function([K.learning_phase()], [output])
-                        result = func([1.])[0]
+                        
+                        
+                        try:
+                                output = self.model.layers[-2 if self.extra_fc is None else -3].output if return_embedding else self.model.layers[-1].output # all layer outputs
+                                func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output])
+                                result = func([adj, inp, 1.])[0]
+
+                        except: # could be preferable, but both prediction methods should work
+                                result = self.model.predict([adj, inp])
+                        
                         result = np.argmax(result, axis = -1) if not return_embedding else result
-                        print("RESULT ", result)
+                        
                 else:
                         raise Error("Please call fit first")
                 
@@ -488,7 +492,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         ##result_df = d3m_DataFrame(result_df, generate_metadata = True)
                         #return CallResult(result_df, True, 1)
                 
-                
+                print("INPUT DATA SHAPE ", learning_df.shape)
                 # output columns.... rm nodeid from learning_df??
                 output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True, source = self)
                 #output.index.name = 'd3mIndex'
@@ -500,6 +504,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
                                                add_index_columns=True,#self.hyperparams['add_index_columns'], 
                                                inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
+                print("Output SHAPE ", output.shape)
                 return CallResult(output, True, 1)
                 #return CallResult(outputs, True, 1)
                         
@@ -519,6 +524,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 return GCN_Params(
                         fitted = self.fitted,
                         model = self.model,
+                        weights = self.model.get_weights(),
                         adj = self._adj)
         
         def set_params(self, *, params: GCN_Params) -> None:
@@ -527,6 +533,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 self.fitted = params['fitted']
                 self.model = params['model']
+                self.model.set_weights(params['weights'])
                 self._adj = params['adj']
 
         def _get_ph(self):
@@ -552,24 +559,19 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 # exponent for mixhop  
                 #return sparse_exp_ax(adj, x, exponent = k)      
 
-        def _make_gcn(self, h_dims = [100, 100], mix_hops = 5, modes = 1):
-                a = copy.copy(self._adj)
-                x = self._input
-
+        def _make_gcn(self, adj, features, h_dims = [100, 100], mix_hops = 5, modes = 1):
+                a = adj
+                x = features #self._input
+                
                 # where should number of modes be handled?
-                print()
-                print("ADJACENCY ", a)
-                print()
-                print("GCN INPUT X ", x)
-                #function = self._gcn_layer
+                
                 for h_i in range(len(h_dims)):
                         act_k = []
                         for k in range(mix_hops+1):
                                 #pre_w = keras.layers.Lambda(gcn_layer, arguments = {'k': k})([x, self._adj])
-                                pre_w = GCN_Layer(k = k, adj = self._adj)(x)
+                                pre_w = GCN_Layer(k = k)([x,a])#, adj = a)(x)
                                 #keras.layers.Lambda(function, arguments = {'k': k})(x)
-                                print("A*X")
-                                print(pre_w)
+                
                                 act = keras.layers.Dense(h_dims[h_i], activation = self._act, name='w'+str(k)+'_'+str(h_i))(pre_w)
                                 act_k.append(act)
                         x = keras.layers.Concatenate(axis = -1, name = 'mix_'+str(mix_hops)+'hops_'+str(h_i))(act_k)

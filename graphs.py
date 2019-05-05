@@ -357,13 +357,12 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
             return CallResult(return_list, True, 1)
         else:
-
-
-        
-        
             result_df = d3m_DataFrame(result, generate_metadata = True)
-            result_df = learning_df.astype(np.int32).join(result_df, on = 'd3mIndex')
+            result_df = learning_df.astype(np.int32).join(result_df)#, on = 'd3mIndex')
         
+            print("SDNE Learning DF ", learning_df.shape)
+            print("SDNE Result DF ", result_df.shape)
+            print("SDNE Original Result ", result.shape)
 
             for column_index in range(result_df.shape[1]):
                 col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
@@ -374,12 +373,12 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                 col_dict['structural_type'] = type(1.0)
             #    # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
                 col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
-
-            result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
+                result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
       
             
             final_df = result_df
-      
+            final_df.set_index('d3mIndex')
+            print('final sdne output ', final_df)
             #append_cols = result_df.loc[learning_df.index]
             #print('APPENDING COLS ', append_cols.shape)
             #print(append_cols.columns)
