@@ -378,7 +378,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             
             final_df = result_df
             final_df.set_index('d3mIndex')
-            print('final sdne output ', final_df)
+
             #append_cols = result_df.loc[learning_df.index]
             #print('APPENDING COLS ', append_cols.shape)
             #print(append_cols.columns)
