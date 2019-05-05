@@ -38,14 +38,14 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
                 'name': 'ISI',
                 'contact': 'mailto:brekelma@usc.edu',
                 'uris': [
-                    'https://gitlab.com/brekelma/dsbox_graphs/graph_dataset_to_list.py'
+                    'https://github.com/brekelma/dsbox_graphs/graph_dataset_to_list.py'
                     #'https://gitlab.com/datadrivendiscovery/common-primitives/blob/master/common_primitives/dataset_to_dataframe.py',
                     #'https://gitlab.com/datadrivendiscovery/common-primitives.git',
                 ],
             },
             'installation': [{
                 'type': metadata_base.PrimitiveInstallationType.PIP,
-                'package_uri': 'git+https://gitlab.com/brekelma/dsbox_graphs.git@{git_commit}#egg=dsbox_graphs'.format(
+                'package_uri': 'git+https://github.com/brekelma/dsbox_graphs.git@{git_commit}#egg=dsbox_graphs'.format(
                     git_commit=d3m_utils.current_git_commit(os.path.dirname(__file__)),
                 ),
             }],
