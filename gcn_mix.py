@@ -32,7 +32,7 @@ from d3m.metadata.hyperparams import Uniform, UniformBool, UniformInt, Union, En
 from d3m.primitive_interfaces.base import CallResult, MultiCallResult
 from d3m.primitive_interfaces.supervised_learning import SupervisedLearnerPrimitiveBase
 
-import config as cfg_
+import _config as cfg_
 
 
 

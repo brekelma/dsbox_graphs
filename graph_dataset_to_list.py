@@ -1,6 +1,6 @@
 import os
 import typing
-import config as cfg_
+import _config as cfg_
 
 from d3m import container, utils as d3m_utils
 from d3m.base import utils as base_utils
