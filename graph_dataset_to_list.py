@@ -31,7 +31,7 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
 
     metadata = metadata_base.PrimitiveMetadata(
         {
-            'id': '',
+            'id': 'dfb8c278-5382-47cd-bd39-f9429890a239',
             'version': '1.0.0',
             'name': "Extract graph tables from Dataset into list of DataFrame",
             'python_path': 'd3m.primitives.data_transformation.graph_to_edge_list.DSBOX',

@@ -206,7 +206,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
         metadata = PrimitiveMetadata({
                 "schema": "v0",
-                "id": "",
+                "id": "48572851-b86b-4fda-961d-f3f466adb58e",
                 "version": "1.0.0",
                 "name": "GCN",
                 "description": "graph convolutional network",

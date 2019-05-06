@@ -192,7 +192,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
 
     metadata = PrimitiveMetadata({
         "schema": "v0",
-        "id": "",
+        "id": "7d61e488-b5bb-4c79-bad6-f1dc07292bf4",
         "version": "1.0.0",
         "name": "SDNE",
         "description": "graph embedding",
