@@ -1,5 +1,6 @@
 import os
 import typing
+import config as cfg_
 
 from d3m import container, utils as d3m_utils
 from d3m.base import utils as base_utils
@@ -43,12 +44,7 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
                     #'https://gitlab.com/datadrivendiscovery/common-primitives.git',
                 ],
             },
-            'installation': [{
-                'type': metadata_base.PrimitiveInstallationType.PIP,
-                'package_uri': 'git+https://github.com/brekelma/dsbox_graphs.git@{git_commit}#egg=dsbox_graphs'.format(
-                    git_commit=d3m_utils.current_git_commit(os.path.dirname(__file__)),
-                ),
-            }],
+            "installation": [ cfg_.INSTALLATION ],
             'algorithm_types': [
                 metadata_base.PrimitiveAlgorithmType.DATA_CONVERSION,
             ],
