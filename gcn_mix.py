@@ -84,9 +84,9 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
                 description = 'first order proximity weight',
                 semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
                 )
-        return_list = UniformBool(
-                default = False,
-                description='for testing',
+        return_embedding = UniformBool(
+                default = True,
+                description='return embedding as features alongside classification prediction',
                 semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter']
         )
 
@@ -457,19 +457,29 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         inp = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]) #.index])
                         
                         #result = self._embedding_model.predict()
-                        return_embedding = False
-                        
                         
                         try:
-                                output = self.model.layers[-2 if self.extra_fc is None else -3].output if return_embedding else self.model.layers[-1].output # all layer outputs
-                                func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output])
+                                output_pred = self.model.layers[-1].output # all layer outputs
+                                func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output_pred])
                                 result = func([adj, inp, 1.])[0]
-
                         except: # could be preferable, but both prediction methods should work
                                 result = self.model.predict([adj, inp])
                         
-                        result = np.argmax(result, axis = -1) if not return_embedding else result
+                        result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
                         
+                        if self.hyperparams['return_embedding']:
+                                output_embed = self.model.layers[-2].output 
+                                func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output_embed])
+                                embed = func([adj, inp, 1.])[0]
+                                print("RESULT SHAPE ", result.shape)
+                                print("EMBED SHAPE ", embed.shape)
+                                try:
+                                        result = np.concatenate([result, embed], axis = -1)
+                                except:
+                                        result = np.concatenate([np.expand_dims(result, 1), embed], axis = -1)
+
+
+
                 else:
                         raise Error("Please call fit first")
                 
@@ -480,21 +490,17 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 # ******************************************
 
 
-                if self.hyperparams['return_list']:
-                        result_np = container.ndarray(result, generate_metadata = True)
-                        return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
-                        return CallResult(return_list, True, 1)
-                else:
-                        pass
-                        #result_df = d3m_DataFrame(result, generate_metadata = True)
-                        ##nodeIDs = inputs[1]
-                        ##result_df['nodeID'] = nodeIDs
-                        ##result_df = d3m_DataFrame(result_df, generate_metadata = True)
-                        #return CallResult(result_df, True, 1)
+                #if self.hyperparams['return_list']:
+                #        result_np = container.ndarray(result, generate_metadata = True)
+                #        return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
+                #        return CallResult(return_list, True, 1)
                 
-                print("INPUT DATA SHAPE ", learning_df.shape)
-                # output columns.... rm nodeid from learning_df??
-                output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True, source = self)
+
+                if not self.hyperparams['return_embedding']:
+                        output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True, source = self)
+                else:
+                        output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True, source = self)                     
+                        
                 #output.index.name = 'd3mIndex'
                 output.index = learning_df.index.copy()
                 outputs = output
