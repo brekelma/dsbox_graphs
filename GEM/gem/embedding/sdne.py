@@ -21,12 +21,38 @@ from .sdne_utils import *
 
 from keras.layers import Input, Dense, Lambda, merge, subtract
 from keras.models import Model, model_from_json
+import keras
 import keras.regularizers as Reg
 from keras.optimizers import SGD, Adam
 from keras import backend as KBack
+import tempfile
 
 from time import time
 
+def make_keras_pickleable():
+    def __getstate__(self):
+        model_str = ""
+        with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
+            keras.models.save_model(self, fd.name, overwrite=True)
+            model_str = fd.read()
+        d = {'model_str': model_str}
+        return d
+
+    def __setstate__(self, state):
+        with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
+            fd.write(state['model_str'])
+            fd.flush()
+            model = keras.models.load_model(fd.name)#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': ec\ho_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})                                                                                          
+        self.__dict__ = model.__dict__
+
+
+    #cls = Sequential                                                                                                                                              
+    #cls.__getstate__ = __getstate__                                                                                                                               
+    #cls.__setstate__ = __setstate__                                                                                                                               
+
+    cls = keras.models.Model
+    cls.__getstate__ = __getstate__
+    cls.__setstate__ = __setstate__
 
 class SDNE(StaticGraphEmbedding):
 
@@ -73,6 +99,7 @@ class SDNE(StaticGraphEmbedding):
 
     def learn_embedding(self, graph=None, edge_f=None,
                         is_weighted=False, no_python=False):
+        make_keras_pickleable()
         if not graph and not edge_f:
             raise Exception('graph/edge_f needed')
         if not graph:
