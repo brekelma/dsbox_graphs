@@ -68,6 +68,9 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
         except:
             edges_id, edges_df = base_utils.get_tabular_resource(inputs, 'edges')
 
+        print("EDGES ")
+        print(edges_df.index)
+        print(edges_df)
         learning_df.metadata = self._update_metadata(inputs.metadata, learning_id)
         nodes_df.metadata = self._update_metadata(inputs.metadata, nodes_id)
         edges_df.metadata = self._update_metadata(inputs.metadata, edges_id)
@@ -79,9 +82,11 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
         #learning_df.index.name = 'd3mIndex'
         print('learning df ')
         print(learning_df)
+        print("learning df index before ", learning_df.index)
         learning_df.reindex(index = learning_df['d3mIndex'])#set_index('d3mIndex')
-        print("POST INDEX")
-        print(learning_df)
+        print("learning df index after ", learning_df.index)
+        print("nodes")
+        print(nodes_df)
         return_list = container.List([learning_df, nodes_df, edges_df], generate_metadata = True)
         #return_list = container.List([nodes_df, edges_df], generate_metadata = True)
         return base.CallResult(return_list)

@@ -3,6 +3,7 @@ import sys
 import typing
 import networkx
 import numpy as np
+import pdb
 
 import tensorflow as tf
 import keras
@@ -87,9 +88,14 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
         return_embedding = UniformBool(
                 default = True,
                 description='return embedding as features alongside classification prediction',
-                semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter']
+                semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter']
         )
-
+        
+        line_graph = UniformBool(
+                default = False,
+                description='treat edges as nodes, construct adjacency matrix based on shared edges.  relevant for edge based classification, e.g. link prediction',
+                semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter']
+        )
 
 # all primitives must be pickle-able, and this should do the trick for Keras models
 
@@ -237,12 +243,44 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
                 
 
-                nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
-                node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
 
-                self._num_training_nodes = node_subset.values.shape[0]
-                self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-                self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])#, node_subset = node_subset)
+                if self.hyperparams['line_graph']:
+                        # try:
+                        #         #idx = edges_df['d3mIndex']
+                        #         my_edges = edges_df.join(learning_df, on ='d3mIndex', how='inner')
+                        #         #edges_df = edges_df.loc[learning_df['d3mIndex'].astype(np.int32)] #
+                        # except Exception as e:
+                        #         print()
+                        #         print("*"*500)
+                        #         print("edges indexing error ", e)
+                        #         print("*"*500)
+                        #         try:
+                        #                edges_df = edges_df.astype(object)
+                        #                #pdb.set_trace()
+                        #                my_edges = pd.merge(edges_df.assign(x=edges_df.source.astype(int)), 
+                        #                                    learning_df.assign(x=learning_df.source_nodeID.astype(int)), 
+                        #                                    how = 'right', 
+                        #                                    left_on = ['source'],#, 'target'],
+                        #                                    right_on = ['source_nodeID'])#, 'target_nodeID'])
+                        #                print()
+                        #                print(my_edges)
+                        #                print()
+                        #                my_edges.set_index('d3mIndex')
+                        #         except Exception as e:
+                        #                 print()
+                        #                 print("MERGING EXCEPTION ", e)
+                        #                 print()
+                        # print(my_edges)
+                        #edges_df = my_edges
+                        self._num_training_nodes = edges_df.values.shape[0]
+                        self._adj = self._make_line_adj(edges_df)
+                        self._input = self._make_line_inputs(edges_df)
+                else:
+                        nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
+                        node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+                        self._num_training_nodes = node_subset.values.shape[0]
+                        self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
+                        self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])#, node_subset = node_subset)
 
                 # dealing with outputs
                 #if self._task in ['clf', 'class', 'classification', 'node_clf']:
@@ -254,7 +292,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         targets =  get_columns_of_type(outputs, target_types)
                 else:
                         targets =  get_columns_of_type(learning_df, target_types)
-                        
+                
+
+                print("TARGETS ", targets)
+                #if not self.hyperparams['line_graph']:        
+                #        print(edges_df[targets[0]])
+                
                 
                 self._label_unique = np.unique(targets.values).shape[0]
                 self.label_encode = LabelEncoder()
@@ -266,27 +309,65 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 self.fitted = False
 
-        def _make_adjacency(self, edges_df, num_nodes = None, tensor = False, #True, 
-                            node_subset = None):
-                
-
-                source_types = ('https://metadata.datadrivendiscovery.org/types/EdgeSource',
-                                                'https://metadata.datadrivendiscovery.org/types/DirectedEdgeSource',
-                                                'https://metadata.datadrivendiscovery.org/types/UndirectedEdgeSource',
-                                                'https://metadata.datadrivendiscovery.org/types/SimpleEdgeSource',
-                                                'https://metadata.datadrivendiscovery.org/types/MultiEdgeSource')
+        def _get_source_dest(self, edges_df, source_types = None, dest_types = None):
+                if source_types is None:
+                        source_types = ('https://metadata.datadrivendiscovery.org/types/EdgeSource',
+                                        'https://metadata.datadrivendiscovery.org/types/DirectedEdgeSource',
+                                        'https://metadata.datadrivendiscovery.org/types/UndirectedEdgeSource',
+                                        'https://metadata.datadrivendiscovery.org/types/SimpleEdgeSource',
+                                        'https://metadata.datadrivendiscovery.org/types/MultiEdgeSource')
 
                 #sources = edges_df['source']
                 sources = get_columns_of_type(edges_df, source_types)
                 
-                dest_types = ('https://metadata.datadrivendiscovery.org/types/EdgeTarget',
+                if dest_types is None:
+                        dest_types = ('https://metadata.datadrivendiscovery.org/types/EdgeTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/DirectedEdgeTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/UndirectedEdgeTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/SimpleEdgeTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/MultiEdgeTarget')
                 dests = get_columns_of_type(edges_df, dest_types)
-
                 
+                return sources, dests
+
+        def _make_line_adj(self, edges_df, node_subset = None, tensor = False):
+                sources, dests = self._get_source_dest(edges_df)
+                
+                num_nodes = edges_df.shape[0]
+
+                # TO DO: change edge detection logic to reflect directed / undirected edge source/target
+                #   multigraph = different adjacency matrix for each edge type?  
+                # to do: various different edge weights?
+                
+                # edges indexed by rows / index of edges_df
+                edges = [[i,j] for i in range(sources.values.shape[0]) for j in range(dests.values.shape[0]) if dests.values[j,0] == sources.values[i,0]]
+                weights = [1.0 for i in range(len(edges))]
+                
+
+                # label encoding of nodes not necessary (only looking for shared nodes)
+                # label encoding of edges not necessary if edges have unique ID ordered 0:num_edges
+                #self.node_enc = LabelEncoder()
+                #node_subset = node_subset if node_subset is not None else edges_df['d3mIndex'].values
+                #self.node_enc.fit(node_subset) # edges indices
+
+                if tensor:
+                        adj = tf.SparseTensor(edges, weights, dense_shape = (num_nodes, num_nodes))
+                else:
+                        edges = ([edges[i][0] for i in range(len(edges))], [edges[i][1] for i in range(len(edges))])
+                        adj = csr_matrix((weights, edges), shape = (num_nodes, num_nodes), dtype = np.float32)
+
+                print()
+                print("*"*500)
+                print("ADJACENCY MATRIX")
+                print(adj)
+                print("*"*500)
+                return adj
+
+        def _make_adjacency(self, edges_df, num_nodes = None, tensor = False, #True, 
+                            node_subset = None):
+                
+                sources, dests = self._get_source_dest(edges_df)
+
                 #attr_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
                 #                          'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
                 #attrs = get_columns_of_type(edges_df, attr_types)
@@ -316,7 +397,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 sources[sources.columns[0]] = self.node_enc.transform(sources.values)
                 dests[dests.columns[0]] = self.node_enc.transform(dests.values)
                 
-
+                # accomodate weighted graphs ??
                 if tensor:
                         adj = tf.SparseTensor([[sources.values[i, 0], dests.values[i,0]] for i in range(sources.values.shape[0])], [1.0 for i in range(sources.values.shape[0])], dense_shape = (num_nodes, num_nodes))
                 else:
@@ -325,7 +406,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
         
                 return adj
                 # PREVIOUS RETURN
-                self._adj = keras.layers.Input(tensor = adj if tensor else tf.convert_to_tensor(adj), sparse = True)
+                #self._adj = keras.layers.Input(tensor = adj if tensor else tf.convert_to_tensor(adj), sparse = True)
 
                 #if self._adj is None:                
                 #else:
@@ -335,8 +416,38 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 #raise NotImplementedError
                 #return keras.layers.Input()
 
+        def _make_line_inputs(self, nodes_df, tensor = False):
+                # feature attributes
+
+                # ID for evaluating adjacency matrix
+                if tensor:
+                        node_id = tf.cast(tf.eye(nodes_df.shape[0]), dtype = tf.float32)
+                        #node_id = tf.sparse.eye(nodes_df.shape[0])
+                else:
+                        #node_id = scipy.sparse.identity(nodes_df.shape[0], dtype = np.float32) #
+                        node_id = np.eye(nodes_df.shape[0])
+                
+                # additional features?
+                # preprocess features, e.g. if non-numeric / text?
+                if False:# len(nodes_df.columns) > 2:
+                        semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
+                                                          'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
+
+                        features = get_columns_of_type(nodes_df, semantic_types).values.astype(np.float32)
+                        
+                        if tensor:
+                                features = tf.convert_to_tensor(features)
+                                to_return= tf.concat([features, node_id], -1)
+                        else:
+                                to_return=np.concatenate([features, node_id], axis = -1)
+                else:
+                        to_return = node_id
+
+
+                return to_return
+
         def _make_input_features(self, nodes_df, tensor = False):# tensor = True):
-        
+         
                 if tensor:
                         node_id = tf.cast(tf.eye(nodes_df.shape[0]), dtype = tf.float32)
                         #node_id = tf.sparse.eye(nodes_df.shape[0])
@@ -358,10 +469,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 to_return=np.concatenate([features, node_id], axis = -1)
                 else:
                         to_return = node_id
-                
+
                 return to_return
                 #if self._input is None:
-                self._input = keras.layers.Input(tensor = to_return if tensor else tf.convert_to_tensor(to_return))
+                #self._input = keras.layers.Input(tensor = to_return if tensor else tf.convert_to_tensor(to_return))
                 #else:
                 #        tf.assign(self._input, to_return if tensor else tf.convert_to_tensor(to_return))
 
@@ -451,10 +562,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 if self.fitted:
                         # embed ALL (even unlabelled examples)
                         learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
-                        node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+                        if not self.hyperparams['line_graph']:
+                                node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
                                         
-                        adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-                        inp = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]) #.index])
+                                adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
+                                inp = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]) #.index])
                         
                         #result = self._embedding_model.predict()
                         
