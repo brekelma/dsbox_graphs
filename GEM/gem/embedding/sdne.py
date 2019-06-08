@@ -43,7 +43,7 @@ def make_keras_pickleable():
             fd.write(state['model_str'])
             fd.flush()
             model = keras.models.load_model(fd.name)#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': ec\ho_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})                                                                                          
-        self.__dict__ = model.__dict__
+            self.__dict__ = model.__dict__
 
 
     #cls = Sequential                                                                                                                                              
@@ -90,6 +90,8 @@ class SDNE(StaticGraphEmbedding):
         for dictionary in hyper_dict:
             for key in dictionary:
                 self.__setattr__('_%s' % key, dictionary[key])
+
+        make_keras_pickleable()
 
     def get_method_name(self):
         return self._method_name

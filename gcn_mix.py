@@ -18,6 +18,7 @@ import scipy.sparse
 from scipy.sparse import csr_matrix
 from keras.utils import to_categorical
 from sklearn.preprocessing import LabelEncoder
+import keras.models
 
 from common_primitives import utils
 import d3m.container as container
@@ -51,7 +52,7 @@ class GCN_Params(params.Params):
         '''
 
         fitted: typing.Union[bool, None] # fitted required, set once primitive is trained
-        model: typing.Union[keras.models.Model, None]
+        model: keras.models.Model #typing.Union[keras.models.Model, None]d
         adj: typing.Union[tf.Tensor, tf.SparseTensor, tf.Variable, keras.layers.Input, np.ndarray, csr_matrix, None]
         weights: typing.Union[typing.Any, None]
 
@@ -69,22 +70,27 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
                 description = 'dimension of latent embedding',
                 semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
                 )
-        beta = UniformInt( 
+        adjacency_order = UniformInt(
                 lower = 1,
-                upper = 20,
-                default = 1,
-                #q = 1,
-                description = 'seen edge reconstruction weight',
-                semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
-                )
-        alpha = Uniform(
-                lower = 1e-8,
-                upper = 1,
-                default = 1e-5,
+                upper = 5,
+                default = 3,
                 #q = 5e-8,
-                description = 'first order proximity weight',
+                description = 'Power of adjacency matrix to consider.  1 recovers Vanilla GCN.  MixHop (Abu El-Haija et al 2019) performs convolutions on A^k for 0 <= k <= order and concatenates them into a representation, allowing the model to consider k-step connections.',
                 semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
                 )
+
+        # hidden_layers
+        
+        # epochs
+        epochs = UniformInt(
+                lower = 1,
+                upper = 500,
+                default = 100,
+                #q = 5e-8,                                                                                                                                                                 
+                description = 'number of epochs to train',
+                semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
+                )
+
         return_embedding = UniformBool(
                 default = True,
                 description='return embedding as features alongside classification prediction',
@@ -118,6 +124,8 @@ def sparse_exp_ax(adj, x, exponent = 1):
         if exponent == 0:
                 return res
        
+        print("*"*100)
+        print("sparse mutl ",adj, res)
         for k in range(exponent):
                 res = dot(adj, res, sparse = True)
         return res
@@ -143,6 +151,31 @@ def get_columns_of_type(df, semantic_types):
 
         return df.select_columns(columns_to_use)
 
+class Slice(keras.layers.Layer):
+        def __init__(self, **kwargs):
+                super(Slice, self).__init__(**kwargs)
+
+        def build(self, input_shape):
+                s = list(input_shape[0])
+                s[0] = None
+                self.shape = s
+                self.built = True
+
+        def call(self, inputs):
+                tensor = inputs[0]
+                inds = inputs[-1]
+                sliced = tf.gather(tensor, tf.squeeze(inds), axis = 0)
+                print("SHAPE ", self.shape)
+                print('sliced ', sliced)
+                sliced.set_shape(self.shape)
+                        
+                return sliced
+
+        def compute_output_shape(self, input_shape):
+                #return input_shape[0]
+                return self.shape
+
+
 class GCN_Layer(keras.layers.Layer):
         def __init__(self, k = 1, adj = None, pre_w = None, **kwargs):
                 self.k = k
@@ -157,13 +190,20 @@ class GCN_Layer(keras.layers.Layer):
                 if isinstance(inputs,list):
                         self.adj = inputs[-1]
                         x = inputs[0]
-                else:
-                        x = inputs
+                #else:
+                #        x = inputs
 
                 return sparse_exp_ax(self.adj, x, exponent = self.k)
                 
         def compute_output_shape(self, input_shape):
-                return input_shape if not isinstance(input_shape, list) else input_shape[0]
+                print("*"*500)
+                print('input shape ', input_shape)
+                shape = input_shape if not isinstance(input_shape, list) else input_shape[0]
+                if isinstance(input_shape, list):
+                        shape = list(shape)
+                        shape[0] = input_shape[-1][0]
+                        shape = tuple(shape)
+                return shape
 
 #def gcn_layer(inputs,  pre_w = None, k = 1, adj = None):
 #        print("INPUTS ", inputs[0], inputs[-1])
@@ -178,10 +218,15 @@ def make_keras_pickleable():
 
         
                 model_str = ""
+                model_weights = ""
                 with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
+                        #self.save(fd.name)#, overwrite=True)
                         keras.models.save_model(self, fd.name, overwrite=True)
                         model_str = fd.read()
-                d = {'model_str': model_str}
+                with tempfile.NamedTemporaryFile(suffix='.h5', delete=True) as fd:
+                        self.save_weights(fd.name)
+                        model_weights = fd.read()
+                d = {'model_str': model_str, 'model_weights': model_weights}
                 return d
 
         def __setstate__(self, state):
@@ -189,7 +234,12 @@ def make_keras_pickleable():
                         fd.write(state['model_str'])
                         fd.flush()
                         model = keras.models.load_model(fd.name, custom_objects = {'tf': tf, 'GCN_Layer': GCN_Layer})
-                        self.__dict__ = model.__dict__
+                        #model.load_weights(
+                with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
+                        fd.write(state['model_weights'])
+                        fd.flush()
+                        model.load_weights(fd.name)
+                self.__dict__ = model.__dict__
                 
         
         #cls = Sequential
@@ -217,7 +267,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 "name": "GCN",
                 "description": "graph convolutional network",
                 # ask about naming convention
-                "python_path": "d3m.primitives.feature_construction.graph_transformer.GCN",
+                "python_path": "d3m.primitives.feature_construction.gcn_mixhop.DSBOX",
                 "original_python_path": "gcn_mix.GCN",
                 "source": {
                         "name": "ISI",
@@ -229,7 +279,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 # See possible types here :https://gitlab.com/datadrivendiscovery/d3m/blob/devel/d3m/metadata/schemas/v0/definitions.json
                 "algorithm_types": ["CONVOLUTIONAL_NEURAL_NETWORK"],
                 "primitive_family": "FEATURE_CONSTRUCTION",
-                "hyperparams_to_tune": ["dimension", "beta", "alpha"]
+                "hyperparams_to_tune": ["dimension", "adjacency_order"]
         })
         
         def __init__(self, *, hyperparams : GCN_Hyperparams) -> None:
@@ -276,11 +326,19 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         self._adj = self._make_line_adj(edges_df)
                         self._input = self._make_line_inputs(edges_df)
                 else:
-                        nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
-                        node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-                        self._num_training_nodes = node_subset.values.shape[0]
-                        self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-                        self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])#, node_subset = node_subset)
+
+                        #nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
+                        #node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+
+                        try:
+                                self._num_training_nodes = node_subset.values.shape[0]
+                        except:
+                                self._num_training_nodes = nodes_df.values.shape[0]
+                        self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], tensor = True)#, node_subset = node_subset.values.astype(np.int32))
+                        self._input = self._make_input_features(nodes_df, tensor = True)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
+                
+                        #self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0])#, node_subset = node_subset.values.astype(np.int32))
+                        #self._input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
 
                 # dealing with outputs
                 #if self._task in ['clf', 'class', 'classification', 'node_clf']:
@@ -294,19 +352,28 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         targets =  get_columns_of_type(learning_df, target_types)
                 
 
-                print("TARGETS ", targets)
+                print("TARGETS ", targets, type(targets))
                 #if not self.hyperparams['line_graph']:        
                 #        print(edges_df[targets[0]])
                 
+                #targets_np = np.zeros(nodes_df.shape[0])
+                #targets_np[learning_df['d3mIndex'].astype(np.int32).values] = learning_df[targets.columns].astype(np.int32).values
+                #nodes_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
+                #print("Full targets ", targets_np)
+                #targets = targets_np
                 
                 self._label_unique = np.unique(targets.values).shape[0]
+                #self._label_unique = np.unique(targets).shape[0]
                 self.label_encode = LabelEncoder()
                 self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
+                #self.training_outputs = to_categorical(self.label_encode.fit_transform(targets), num_classes = np.unique(targets).shape[0])
                 
                 #self.training_outputs = to_categorical(self.label_encode.fit_transform(outputs), num_classes = np.unique(outputs.values).shape[0])
                 #else:
                 #        raise NotImplementedError()
 
+
+                self.training_inds = learning_df['d3mIndex'].astype(np.int32).values
                 self.fitted = False
 
         def _get_source_dest(self, edges_df, source_types = None, dest_types = None):
@@ -377,8 +444,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 self.node_enc = LabelEncoder()
                 #id_col = [i for i in nodes_df.columns if 'node' in i and 'id' in i.lower()][0]
                 to_fit = node_subset if node_subset is not None else np.concatenate([sources.values,dests.values], axis = -1).ravel()
+
                 self.node_enc.fit(to_fit) #nodes_df[id_col].values)
-               
 
 
                 if node_subset is not None:
@@ -446,14 +513,15 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 return to_return
 
-        def _make_input_features(self, nodes_df, tensor = False):# tensor = True):
-         
+        def _make_input_features(self, nodes_df, tensor = False, num_nodes = None):# tensor = True):
+                num_nodes = num_nodes if num_nodes is not None else nodes_df.shape[0]
+
                 if tensor:
-                        node_id = tf.cast(tf.eye(nodes_df.shape[0]), dtype = tf.float32)
+                        node_id = tf.cast(tf.eye(num_nodes), dtype = tf.float32)
                         #node_id = tf.sparse.eye(nodes_df.shape[0])
                 else:
                         #node_id = scipy.sparse.identity(nodes_df.shape[0], dtype = np.float32) #
-                        node_id = np.eye(nodes_df.shape[0])
+                        node_id = np.eye(num_nodes)
 
                 # preprocess features, e.g. if non-numeric / text?
                 if len(nodes_df.columns) > 2:
@@ -491,15 +559,21 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 self._act = 'relu'
                 self._epochs = 200 if self._num_training_nodes < 10000 else 50
                 self._units = [100, 100]
-                self._mix_hops = 3
+                self._mix_hops = self.hyperparams['adjacency_order']
                 self._modes = 1
                 self._lr = 0.001
                 self._optimizer = keras.optimizers.Adam(self._lr)
                 self._extra_fc = 100 
                 # self._adj and self._input already set as keras Input tensors
+ 
+                #adj_input = keras.layers.Input(shape = self._adj.shape[1:], name = 'adjacency', sparse = True, dtype = tf.float32)
+                adj_input = keras.layers.Input(tensor = self._adj, batch_shape = (None, tf.shape(self._adj)[-1]), name = 'adjacency', dtype = tf.float32)
+                feature_input = keras.layers.Input(tensor = self._input, name = 'features', dtype = tf.float32)
 
-                adj_input = keras.layers.Input(shape = self._adj.shape[1:], name = 'adjacency', sparse = True)
-                feature_input = keras.layers.Input(shape = self._input.shape[1:], name = 'features')#sparse =True) #tensor =  if tensor else tf.convert_to_tensor(to_return))
+                print("*"*100)
+                print('feature input ', feature_input)
+                print("*"*100)
+                #feature_input = keras.layers.Input(shape = self._input.shape[1:], name = 'features')#sparse =True) #tensor =  if tensor else tf.convert_to_tensor(to_return))
                 embedding = self._make_gcn(adj_input, feature_input,
                         h_dims = self._units,
                         mix_hops = self._mix_hops, 
@@ -515,30 +589,82 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 label_act = 'softmax' if self._label_unique > 1 else 'sigmoid'
                 y_pred = keras.layers.Dense(self._label_unique, activation = label_act, name = 'y_pred')(embedding)
 
-
+                def semi_supervised_slice(tensor, inds = None):
+                        sliced = tf.gather(tensor, inds, axis = 0)
+                        #sliced.set_shape([None, sliced.get_shape()[-1]])
+                        return sliced
+     
+                inds = keras.layers.Input(shape = (None,), dtype=np.int32, name = 'training_inds')
+                print()
+                print("INDS ", inds)
+                print()
+                print("TRYING SLICE ", y_pred)
+                #y_pred = Slice(name = 'slice_nodes')([y_pred, inds])#, name = 'slice_nodes')
+                print("SLICE output ", y_pred)
+                y_pred = keras.layers.Lambda(semi_supervised_slice, arguments = {'inds': self.training_inds})(y_pred)
 
                 outputs = []
                 loss_functions = []
                 loss_weights = []
-
+        
                 outputs.append(y_pred)
 
                 if label_act == 'softmax':  # if self._task == 'node_clf': 
-                        loss_functions.append(keras.objectives.categorical_crossentropy)
+                        #loss_functions.append(keras.objectives.categorical_crossentropy)
+                        loss_functions = keras.objectives.categorical_crossentropy
                 else: #f label_act == 'sigmoid':
-                        loss_functions.append(keras.objectives.binary_crossentropy)
+                        #loss_functions.append(keras.objectives.binary_crossentropy)
+                        loss_functions = keras.objectives.binary_crossentropy
                 #    loss_functions.append(keras.objectives.mean_squared_error)#mse                                            
-                
-                loss_weights.append(1.0)
 
+
+                def loss_fun(inputs, function = None):
+                        return function(inputs[0], inputs[-1]) if function is not None else inputs
+
+                y_true = keras.layers.Input(shape = (self.training_outputs.shape[-1],), name = 'y_true')
+                outputs = keras.layers.Lambda(loss_fun, arguments = {'function': loss_functions})([y_true, y_pred])
+                #outputs = loss_functions(y_true, y_pred)
+                #keras.layers.Lambda(loss_functions)([y_true, y_pred])
+                
+                def identity(x_true, x_pred):
+                        return x_pred
+
+                loss_functions = [identity]
+
+                loss_weights.append(1.0)
+                print(self._optimizer)
+                print(outputs)
+                print(loss_functions)
+                print(loss_weights)
                 # fit keras
-                self.model = keras.models.Model(inputs = [adj_input, feature_input], outputs = outputs)
+                self.model = keras.models.Model(inputs = [y_true, inds, adj_input, feature_input], outputs = [outputs])#, feature_input], outputs = outputs)
                 self.model.compile(optimizer = self._optimizer, loss = loss_functions, loss_weights = loss_weights)
 
-                self.model.fit([self._adj, self._input], # already specified as tensors
-                               [self.training_outputs]*len(outputs),                               
-                               shuffle = False, epochs = self._epochs, batch_size = self._num_training_nodes) # validation_data = [
+                #inds = learning_df['d3mIndex'].astype(np.int32).values
+                print("INDS FOR ADJACENCY AND INPUT ")
+                print(self.training_inds)
+                print("training outputs ")
+                print(self.training_outputs.shape)
+                
 
+
+                print(self.model.summary())
+                print('training ground truth ', self.training_outputs.shape)
+                print(self.training_inds.shape[0])
+
+                #self.model.fit([self._adj[self.training_inds]],#, self._input], # already specified as tensors
+                
+                print("Squeezed inputs...")
+                print(np.squeeze(self.training_inds))
+                self.model.fit(x = [np.squeeze(self.training_outputs), np.squeeze(self.training_inds)], #[self._adj],#, self._input], # already specified as tensors
+                               y = [np.squeeze(self.training_outputs)],# + [np.squeeze(self.training_outputs)],                               
+                               shuffle = False, epochs = self._epochs, 
+                               batch_size = self.training_inds.shape[0])
+                               #batch_size = self._num_training_nodes) 
+
+                print("*"*5000)
+                print("finished training")
+                print("*"*100)
                 self.fitted = True
                 return CallResult(None, True, 1)
         
@@ -559,24 +685,45 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                                                  
         def produce(self, *, inputs : Input, outputs : Output, timeout : float = None, iterations : int = None) -> CallResult[Output]:
+                make_keras_pickleable()
                 if self.fitted:
                         # embed ALL (even unlabelled examples)
                         learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
                         if not self.hyperparams['line_graph']:
+                                #node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+                                #adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
+                                #inp = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]) #.index])
+                                nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
                                 node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-                                        
+                                self._num_training_nodes = node_subset.values.shape[0]
                                 adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-                                inp = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]) #.index])
-                        
-                        #result = self._embedding_model.predict()
-                        
+                                inp = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
+
+
+                        print()
+                        print("*"*500)
+                        print('learning df \n', learning_df)
+                        print("*"*500)
+                        print('edges_df \n ', edges_df)
+                        print('nodes ', nodes_df.values.shape)
+                        print("*"*500)
+                        print(adj)
+                        print(inp)
+                        print()
+                        print("DOING PRODUCE")
                         try:
                                 output_pred = self.model.layers[-1].output # all layer outputs
                                 func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output_pred])
+                                print()
                                 result = func([adj, inp, 1.])[0]
                         except: # could be preferable, but both prediction methods should work
-                                result = self.model.predict([adj, inp])
-                        
+                                try:
+                                        result = self.model.predict([adj, inp])
+                                except:
+                                        self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0]) #, node_subset = node_subset.values.astype(np.int32))
+                                        self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
+                                        result = self.model.predict(None)
+
                         result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
                         
                         if self.hyperparams['return_embedding']:
@@ -689,7 +836,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 #pre_w = keras.layers.Lambda(gcn_layer, arguments = {'k': k})([x, self._adj])
                                 pre_w = GCN_Layer(k = k)([x,a])#, adj = a)(x)
                                 #keras.layers.Lambda(function, arguments = {'k': k})(x)
-                
+                                print("PRE W ", str(k), ':', pre_w)
                                 act = keras.layers.Dense(h_dims[h_i], activation = self._act, name='w'+str(k)+'_'+str(h_i))(pre_w)
                                 act_k.append(act)
                         x = keras.layers.Concatenate(axis = -1, name = 'mix_'+str(mix_hops)+'hops_'+str(h_i))(act_k)

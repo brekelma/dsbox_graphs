@@ -54,7 +54,7 @@ def make_keras_pickleable():
             fd.flush()
             model = keras.models.load_model(fd.name)#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': echo_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})
         self.__dict__ = model.__dict__
-
+        
 
     #cls = Sequential
     #cls.__getstate__ = __getstate__
@@ -108,7 +108,7 @@ class SDNE_Hyperparams(hyperparams.Hyperparams):
     dimension = UniformInt(
         lower = 10,
         upper = 200,
-        default = 100,
+        default = 10,
         #q = 5,
         description = 'dimension of latent embedding',
         semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
@@ -146,8 +146,8 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         "version": "1.0.0",
         "name": "SDNE",
         "description": "graph embedding",
-        "python_path": "d3m.primitives.feature_construction.graph_transformer.SDNE",
-        "original_python_path": "gem.gem",
+        "python_path": "d3m.primitives.feature_construction.sdne.DSBOX",
+        "original_python_path": "sdne.SDNE",
         "source": {
             "name": "ISI",
             "contact": "mailto:brekelma@usc.edu",
@@ -243,7 +243,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         self.fitted = False
 
     def fit(self, *, timeout : float = None, iterations : int = None) -> None:
-        make_keras_pickleable()
+        #make_keras_pickleable()
         if self.fitted:
             return CallResult(None, True, 1)
 
@@ -273,6 +273,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
 						 
 						 
     def produce(self, *, inputs : Input, timeout : float = None, iterations : int = None) -> CallResult[Output]:
+        #make_keras_pickleable()
         if self.fitted:
             result = self._model._Y #produce( )#_Y
         else:
@@ -309,7 +310,13 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         else:
             result_df = d3m_DataFrame(result, generate_metadata = True)
             
-            result_df = learning_df.astype(np.int32).join(result_df)#, on = 'd3mIndex')
+            print("*"*500)
+            print("RETURN LIST ")
+            result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
+            print(result_df)
+            print("*"*500)
+            print('result df shape ', result_df.shape)
+            #result_df = learning_df.astype(object).join(result_df.astype(object))# on = 'd3mIndex')#, on = 'nodeID')
         
             print("SDNE Learning DF ", learning_df.shape)
             print("SDNE Result DF ", result_df.shape)
@@ -325,13 +332,16 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             # #    # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
             #     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
             #     result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
+            
             output = d3m_DataFrame(result_df, index = learning_df['d3mIndex'], generate_metadata = True, source = self)
             output.index = learning_df.index.copy()
-            self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
+            print("Finixhing output")
+            #print('finished output ')
+            #self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
 
-            output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
-                                           add_index_columns=True,#self.hyperparams['add_index_columns'], 
-                                           inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
+            #output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
+            #                               add_index_columns=True,#self.hyperparams['add_index_columns'], 
+            #                               inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
 
             #final_df = result_df
             #final_df.set_index('d3mIndex')

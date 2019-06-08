@@ -25,14 +25,12 @@ setup(
     ], 
     entry_points = {
     'd3m.primitives': [
-        #'feature_construction.graph_transformer.Node2Vec = graphs:Node2Vec',
-        'feature_construction.graph_transformer.SDNE = sdne:SDNE',
-	'data_transformation.graph_to_edge_list.DSBOX = graph_dataset_to_list:GraphDatasetToList',
-	'feature_construction.graph_transformer.GCN = gcn_mix:GCN'
-        #'feature_construction.corex_text.CorexText = corex_text:CorexText',
-        #'regression.corex_supervised.EchoLinear = echo_regressor:EchoLinearRegression',
-        #'classification.corex_supervised.Echo = echo_sae:EchoClassification',
-        #'regression.echo.Echo = echo_sae:EchoRegression'        
+        'feature_construction.sdne.DSBOX = sdne:SDNE',
+        'data_transformation.graph_to_edge_list.DSBOX = graph_dataset_to_list:GraphDatasetToList',
+        'feature_construction.gcn_mixhop.DSBOX = gcn_mix:GCN'
+        #'feature_construction.graph_transformer.SDNE = sdne:SDNE',
+	#'data_transformation.graph_to_edge_list.DSBOX = graph_dataset_to_list:GraphDatasetToList',
+	#'feature_construction.graph_transformer.GCN = gcn_mix:GCN'
     ],
     }
 
