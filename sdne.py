@@ -89,7 +89,8 @@ def loadGraphFromEdgeDF(df, directed=True):
 						 
 class SDNE_Params(params.Params):
     fitted: typing.Union[bool, None]
-    model: typing.Union[sdne.SDNE, None]
+    model: typing.Union[keras.models.Model, None]
+    #model: typing.Union[sdne.SDNE, None]
     node_enc: typing.Union[LabelEncoder, None]
 # SDNE takes embedding dimension (d), 
 # seen edge reconstruction weight (beta), 
@@ -243,7 +244,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         self.fitted = False
 
     def fit(self, *, timeout : float = None, iterations : int = None) -> None:
-        #make_keras_pickleable()
+        
         if self.fitted:
             return CallResult(None, True, 1)
 
@@ -261,13 +262,15 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         dim = self.hyperparams['dimension']
         alpha = self.hyperparams['alpha']
         beta = self.hyperparams['beta']		 
-        self._model = sdne.SDNE(d = dim,
+        #self._model = sdne.SDNE(d = dim,
+        self._sdne = sdne.SDNE(d = dim,
                                 alpha = alpha,
                                 beta = beta,
                                 **args)
-        self._model.learn_embedding(graph = self.training_data)
-        
-
+        #self._model.learn_embedding(graph = self.training_data)
+        self._sdne.learn_embedding(graph = self.training_data)
+        self._model = self._sdne._model
+        make_keras_pickleable()
         self.fitted = True
         return CallResult(None, True, 1)
 						 
@@ -275,16 +278,19 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
     def produce(self, *, inputs : Input, timeout : float = None, iterations : int = None) -> CallResult[Output]:
         #make_keras_pickleable()
         if self.fitted:
-            result = self._model._Y #produce( )#_Y
+            result = self._sdne._Y #produce( )#_Y
         else:
             dim = self.hyperparams['dimension']
             alpha = self.hyperparams['alpha']
             beta = self.hyperparams['beta']		 
-            self._model = sdne.SDNE(d = dim,
+            #self._model 
+            self._sdne = sdne.SDNE(d = dim,
                                 alpha = alpha,
                                 beta = beta,
                                 **args)
-        
+            self._sdne.learn_embedding(graph = self.training_data)
+            self._model = self._sdne._model
+            result = self._sdne._Y
         
         if len(inputs) == 3:
             # network x list remnant
