@@ -89,8 +89,8 @@ def loadGraphFromEdgeDF(df, directed=True):
 						 
 class SDNE_Params(params.Params):
     fitted: typing.Union[bool, None]
-    model: typing.Union[keras.models.Model, None]
-    #model: typing.Union[sdne.SDNE, None]
+    #model: typing.Union[keras.models.Model, None]
+    model: typing.Union[sdne.SDNE, None]
     node_enc: typing.Union[LabelEncoder, None]
 # SDNE takes embedding dimension (d), 
 # seen edge reconstruction weight (beta), 
@@ -316,18 +316,12 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         else:
             result_df = d3m_DataFrame(result, generate_metadata = True)
             
-            print("*"*500)
-            print("RETURN LIST ")
+            
+            
             result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
-            print(result_df)
-            print("*"*500)
-            print('result df shape ', result_df.shape)
+            
             #result_df = learning_df.astype(object).join(result_df.astype(object))# on = 'd3mIndex')#, on = 'nodeID')
         
-            print("SDNE Learning DF ", learning_df.shape)
-            print("SDNE Result DF ", result_df.shape)
-            print("SDNE Original Result ", result.shape)
-
             # for column_index in range(result_df.shape[1]):
             #     col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
             #     #if column_index == 0:
@@ -341,7 +335,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             
             output = d3m_DataFrame(result_df, index = learning_df['d3mIndex'], generate_metadata = True, source = self)
             output.index = learning_df.index.copy()
-            print("Finixhing output")
+            
             #print('finished output ')
             #self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
 
@@ -394,13 +388,15 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
     def get_params(self) -> SDNE_Params:
         return SDNE_Params(
             fitted = self.fitted,
-            model = self._model,
+            model = self._sdne,
+            #model = self._model,
             node_enc = self.node_enc
         )
 	
     def set_params(self, *, params: SDNE_Params) -> None:
         self.fitted = params['fitted']
-        self._model = params['model']
+        self._sdne = params['model']
+        #self._model = params['model']
         self.node_enc = params['node_enc']
     #def __copy__(self):
     #    new = SDNE()
