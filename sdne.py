@@ -29,7 +29,8 @@ from d3m.metadata.hyperparams import Uniform, UniformBool, UniformInt, Union, En
 from d3m.primitive_interfaces.base import CallResult, MultiCallResult
 from d3m.primitive_interfaces.unsupervised_learning import UnsupervisedLearnerPrimitiveBase
 
-import _config as cfg_
+#import _config as cfg_
+import config as cfg_
 
 #CUDA_VISIBLE_DEVICES=""
 Input = container.List
@@ -114,6 +115,14 @@ class SDNE_Hyperparams(hyperparams.Hyperparams):
         description = 'dimension of latent embedding',
         semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
         )
+    epochs = UniformInt(
+        lower = 1,
+        upper = 500,
+        default = 50,
+        #q = 5e-8,                                                                                                                                                                                        
+        description = 'number of epochs to train',
+        semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
+    )
     beta = UniformInt( 
         lower = 1,
         upper = 20,
@@ -128,6 +137,14 @@ class SDNE_Hyperparams(hyperparams.Hyperparams):
         default = 1e-5,
         #q = 5e-8,
         description = 'first order proximity weight',
+        semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
+        )
+    lr = Uniform(
+        lower = 1e-5,
+        upper = 1e-2,
+        default = 5e-4,
+        #q = 5e-8,                                                                                                                                                                                               
+        description = 'learning rate (constant across training)',
         semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
         )
     return_list = UniformBool(
@@ -254,8 +271,8 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         args['K'] = 3
         args['n_units'] = [500, 300,]
         args['rho'] = 0.3
-        args['n_iter'] = 2
-        args['xeta'] = 0.001
+        args['n_iter'] = self.hyperparams['epochs']
+        args['xeta'] = self.hyperparams['lr'] #0.0005
         args['n_batch'] = 100 #500
         self._args = args
 				
@@ -314,13 +331,13 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
             return CallResult(return_list, True, 1)
         else:
-            result_df = d3m_DataFrame(result, generate_metadata = True)
-            
-            
+            result_df = d3m_DataFrame(result, generate_metadata = False)
             
             result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
-            
-            #result_df = learning_df.astype(object).join(result_df.astype(object))# on = 'd3mIndex')#, on = 'nodeID')
+            result_df.index.name = 'd3mIndex'
+            print("Result pre-reset ", result_df)
+            result_df.reset_index(drop = True)
+            #result_df = learning_df.astype(object).join(result_df.astype(object), on = 'd3mIndex')#, on = 'nodeID')
         
             # for column_index in range(result_df.shape[1]):
             #     col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
@@ -333,8 +350,12 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             #     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
             #     result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
             
-            output = d3m_DataFrame(result_df, index = learning_df['d3mIndex'], generate_metadata = True, source = self)
-            output.index = learning_df.index.copy()
+
+            result_df = d3m_DataFrame(result, generate_metadata = True)
+            print("Result df (final) ", result_df)
+            print("learning _df ", learning_df)
+            #output = d3m_DataFrame(result_df, generate_metadata = True, source = self) #index = learning_df['d3mIndex'], 
+            #output.index = learning_df.index.copy()
             
             #print('finished output ')
             #self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
@@ -342,12 +363,13 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             #output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
             #                               add_index_columns=True,#self.hyperparams['add_index_columns'], 
             #                               inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
-
+            #print('SDNE OUTPUT ', output)
             #final_df = result_df
             #final_df.set_index('d3mIndex')
             #return CallResult(final_df, True, 1)
-            #return CallResult(result_df, True, 1)
-            return CallResult(output, True, 1)
+            return CallResult(result_df, True, 1)
+            #return CallResult(output, True, 1)
+
             #append_cols = result_df.loc[learning_df.index]
             #print('APPENDING COLS ', append_cols.shape)
             #print(append_cols.columns)

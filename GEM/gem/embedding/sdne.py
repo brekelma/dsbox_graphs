@@ -126,14 +126,15 @@ class SDNE(StaticGraphEmbedding):
 
         # Initialize self._model
         # Input
-        x_in = Input(shape=(2 * self._node_num,), name='x_in')
+        nn = self._node_num
+        x_in = Input(shape=(2 * nn,), name='x_in')
         x1 = Lambda(
-            lambda x: x[:, 0:self._node_num],
-            output_shape=(self._node_num,)
+            lambda x: x[:, 0:nn],
+            output_shape=(nn,)
         )(x_in)
         x2 = Lambda(
-            lambda x: x[:, self._node_num:2 * self._node_num],
-            output_shape=(self._node_num,)
+            lambda x: x[:, nn:2 * nn],
+            output_shape=(nn,)
         )(x_in)
         # Process inputs
         [x_hat1, y1] = self._autoencoder(x1)
@@ -156,7 +157,7 @@ class SDNE(StaticGraphEmbedding):
         def weighted_mse_x(y_true, y_pred):
             ''' Hack: This fn doesn't accept additional arguments.
                       We use y_true to pass them.
-                y_pred: Contains x_hat - x
+                y_pred: Contxains x_hat - x
                 y_true: Contains [b, deg]
             '''
             return KBack.sum(

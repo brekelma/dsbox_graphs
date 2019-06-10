@@ -35,8 +35,8 @@ from d3m.metadata.hyperparams import Uniform, UniformBool, UniformInt, Union, En
 from d3m.primitive_interfaces.base import CallResult, MultiCallResult
 from d3m.primitive_interfaces.supervised_learning import SupervisedLearnerPrimitiveBase
 
-import _config as cfg_
-
+#import _config as cfg_
+import config as cfg_
 
 
 Input = typing.Union[container.List, container.DataFrame]
@@ -54,8 +54,12 @@ class GCN_Params(params.Params):
 
         fitted: typing.Union[bool, None] # fitted required, set once primitive is trained
         model: keras.models.Model #typing.Union[keras.models.Model, None]d
-        adj: typing.Union[tf.Tensor, tf.SparseTensor, tf.Variable, keras.layers.Input, np.ndarray, csr_matrix, None]
+        pred_model: keras.models.Model
+        embed_model: keras.models.Model
         weights: typing.Union[typing.Any, None]
+        pred_weights: typing.Union[typing.Any, None]
+        embed_weights: typing.Union[typing.Any, None]
+        adj: typing.Union[tf.Tensor, tf.SparseTensor, tf.Variable, keras.layers.Input, np.ndarray, csr_matrix, None]
 
 class GCN_Hyperparams(hyperparams.Hyperparams):
 
@@ -106,7 +110,38 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
 
 # all primitives must be pickle-able, and this should do the trick for Keras models
 
+def loss_fun(inputs, function = None, first = None):
+        if isinstance(function, str):
+                import importlib
+                mod = importlib.import_module('keras.objectives')
+                function = getattr(mod, function)
+        try:
+                return function(inputs[0], inputs[-1]) if function is not None else inputs
+        except:
+                inputs[0] = tf.gather(inputs[0], np.arange(first))
+                return function(inputs[0], inputs[-1]) if function is not None else inputs
 
+
+
+def dummy_concat(inputs, total = None, keep = None):
+        tensor = inputs[0]
+        shape_ref = inputs[-1]
+        dummy = tf.zeros_like(shape_ref)[:(tf.shape(shape_ref)[0] - tf.shape(tensor)[0])]
+
+        try:
+                return tf.concat([tensor, dummy], axis = 0, name = 'dummy_concat')
+        except:
+                return tf.concat([tf.expand_dims(tensor,-1), dummy], axis = 0, name = 'dummy_concat')
+
+def assign_scattered(inputs):
+        slice_loss = inputs[0]
+        shape_ref = inputs[1]
+        inds = tf.expand_dims(tf.cast(inputs[-1], tf.int32), -1)
+        full_loss = tf.scatter_nd(inds, slice_loss, shape = [tf.shape(shape_ref)[0]])
+        return full_loss #tf.reshape(full_loss, (-1,))
+
+def identity(x_true, x_pred):
+        return x_pred
 
 def dot(x, y, sparse=False):
         """Wrapper for tf.matmul (sparse vs dense)."""
@@ -227,7 +262,9 @@ def make_keras_pickleable():
                 with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
                         fd.write(state['model_str'])
                         fd.flush()
-                        model = keras.models.load_model(fd.name, custom_objects = {'tf': tf, 'GCN_Layer': GCN_Layer})
+                        model = keras.models.load_model(fd.name, custom_objects = 
+                                {'tf': tf, 'GCN_Layer': GCN_Layer, 'identity': identity,
+                                'assign_scattered': assign_scattered})
                         #model.load_weights(
                 with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
                         fd.write(state['model_weights'])
@@ -651,28 +688,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 #    loss_functions.append(keras.objectives.mean_squared_error)#mse                                            
 
 
-                def loss_fun(inputs, function = None, first = None):
-                        if isinstance(function, str):
-                                mod = importlib.import_module('keras.objectives')
-                                function = getattr(mod, function)
-                        try:
-                                return function(inputs[0], inputs[-1]) if function is not None else inputs
-                        except:
-                                inputs[0] = tf.gather(inputs[0], np.arange(first))
-                                return function(inputs[0], inputs[-1]) if function is not None else inputs
-
                 
-
-                def dummy_concat(inputs, total = None, keep = None):
-                        tensor = inputs[0]
-                        shape_ref = inputs[-1]
-                        dummy = tf.zeros_like(shape_ref)[:(tf.shape(shape_ref)[0] - tf.shape(tensor)[0])]
-
-                        try:
-                                return tf.concat([tensor, dummy], axis = 0, name = 'dummy_concat')
-                        except:
-                                return tf.concat([tf.expand_dims(tensor,-1), dummy], axis = 0, name = 'dummy_concat')
-
                 # Note: Y-true is an input tensor
                 y_pred_slice = keras.layers.Lambda(semi_supervised_slice)([y_pred, inds])#, arguments = {'inds': self.training_inds})(y_pred)
                 # doesn't acutally use total / keep
@@ -681,12 +697,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 slice_loss = keras.layers.Lambda(loss_fun, arguments = {'function': loss_function, 'first': self._num_labeled_nodes})([y_true_slice, y_pred_slice])
                 
-                def assign_scattered(inputs):
-                        slice_loss = inputs[0]
-                        shape_ref = inputs[1]
-                        inds = tf.expand_dims(tf.cast(inputs[-1], tf.int32), -1)
-                        full_loss = tf.scatter_nd(inds, slice_loss, shape = [tf.shape(shape_ref)[0]])
-                        return full_loss #tf.reshape(full_loss, (-1,))
+
 
                 full_loss = keras.layers.Lambda(assign_scattered)([slice_loss, y_pred, inds])
                 #full_loss = keras.layers.Lambda(dummy_concat, arguments = {'total': self._num_training_nodes, 'keep':self._num_labeled_nodes})([outputs, y_pred])
@@ -697,8 +708,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 
                 #
                 
-                def identity(x_true, x_pred):
-                        return x_pred
+            
                 
                 #outputs.append(y_pred_full)
                 #loss_functions.append(loss_function)
@@ -714,8 +724,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
         
 
                 # fit keras
-                self.model = keras.models.Model(inputs = [adj_input, feature_input, y_true, inds], outputs = outputs)#, feature_input], outputs = outputs)
-                self.pred_model = keras.models.Model(inputs = [adj_input, feature_input, inds], outputs = [y_pred_slice])#, feature_input], outputs = outputs)
+                self.model = keras.models.Model(inputs = [y_true, inds, adj_input, feature_input], outputs = outputs)#, feature_input], outputs = outputs)
+                self.pred_model = keras.models.Model(inputs = [inds, adj_input, feature_input], outputs = [y_pred_slice])#, feature_input], outputs = outputs)
                 self.embedding_model = keras.models.Model(inputs = [adj_input, feature_input], outputs = [embedding])#, feature_input], outputs = outputs)
                 self.model.compile(optimizer = self._optimizer, loss = loss_functions, loss_weights = loss_weights)
 
@@ -729,7 +739,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 self.model.fit(x = [self._adj, self._input], #[self._adj],#, self._input], # already specified as tensors
                                y = [self.training_outputs],# + [np.squeeze(self.training_outputs)],                               
                                shuffle = False, epochs = self._epochs, 
-                               batch_size = self._num_training_nodes) #self.training_inds.shape[0])
+                               batch_size = self._num_training_nodes,
+                               verbose = 0
+                ) #self.training_inds.shape[0])
                                #batch_size = self._num_training_nodes) 
                 
                 # all must have same # of samples
@@ -780,7 +792,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         self._num_training_nodes = nodes_df.values.shape[0]
                                 _adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0])#, node_subset = node_subset.values.astype(np.int32))
                                 _input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
-
+                                
 
                         target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
                                 'https://metadata.datadrivendiscovery.org/types/TrueTarget')
@@ -799,9 +811,13 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         try:
                                 result = self.pred_model.predict([_adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
                         except Exception as e:
-                                self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0]) #, node_subset = node_subset.values.astype(np.int32))
-                                self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
-                                result = self.model.predict([_adj.todense(), _input.todense()], steps = 1)
+                                print(type(self.training_inds), self.training_inds.shape, np.squeeze(self.training_inds).shape)
+                                print("list ", np.array(list(np.squeeze(self.training_inds))).shape)
+                                #result = self.pred_model.predict([np.squeeze(self.training_inds), _adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
+                                result = self.pred_model.predict([np.squeeze(self.training_inds)[:], _adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
+                                #self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0]) #, node_subset = node_subset.values.astype(np.int32))
+                                #self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
+                                #result = self.model.predict([_adj.todense(), _input.todense()], steps = 1)
 
 
                         
@@ -813,7 +829,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 #         func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output_embed])
                                 #         embed = func([adj, inp, 1.])[0]
                                 # except:
-                                embed = self.embedding_model.predict([_adj.todense(), _input.todense()], steps = 1)
+                                try:
+                                        embed = self.embedding_model.predict([_adj.todense(), _input.todense()], steps = 1)
+                                except:
+                                        embed = self.embedding_model.predict([self.training_inds, _adj.todense(), _input.todense()], steps = 1)
                                         
                                 embed = embed[self.training_inds]
                                 try:
@@ -873,7 +892,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 return GCN_Params(
                         fitted = self.fitted,
                         model = self.model,
+                        pred_model = self.pred_model,
+                        embed_model = self.embedding_model,
                         weights = self.model.get_weights(),
+                        pred_weights = self.pred_model.get_weights(),
+                        embed_weights = self.embedding_model.get_weights(),
                         adj = self._adj)
         
         def set_params(self, *, params: GCN_Params) -> None:
@@ -883,6 +906,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 self.fitted = params['fitted']
                 self.model = params['model']
                 self.model.set_weights(params['weights'])
+                self.pred_model = params['pred_model']
+                self.pred_model.set_weights(params['pred_weights'])
+                self.embedding_model = params['embed_model']
+                self.embedding_model.set_weights(params['embed_weights'])
                 self._adj = params['adj']
 
         def _get_ph(self):
