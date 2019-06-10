@@ -164,7 +164,8 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         "version": "1.0.0",
         "name": "SDNE",
         "description": "Structural Deep Network Embedding (Wang et al 2016): unsupervised network embedding using autoencoders to preserve first order proximity (i.e. connected nodes have similar embeddings) and second order proximity (i.e. nodes with similar neighbors have similar embeddings).  Hyperparam alpha controls weight of 1st order proximity loss (L2 norm of embedding difference), beta controls second-order loss (reconstruction of adjacency matrix row, matrix B in Wang et al).  Expects list of [learning_df, nodes_df, edges_df] as input (e.g. by running common_primitives.normalize_graphs + data_tranformation.graph_to_edge_list.DSBOX)",
-        "python_path": "d3m.primitives.feature_construction.sdne.DSBOX",
+#        "python_path": "d3m.primitives.feature_construction.sdne.DSBOX",
+        "python_path": "d3m.primitives.feature_construction.graph_transformation.SDNE",
         "original_python_path": "sdne.SDNE",
         "source": {
             "name": "ISI",
