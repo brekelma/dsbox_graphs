@@ -335,8 +335,8 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             
             result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
             result_df.index.name = 'd3mIndex'
-            print("Result pre-reset ", result_df)
-            result_df.reset_index(drop = True)
+            #result_df.reset_index(drop = False, inplace = True)
+            print("Result post-reset ", result_df)
             #result_df = learning_df.astype(object).join(result_df.astype(object), on = 'd3mIndex')#, on = 'nodeID')
         
             # for column_index in range(result_df.shape[1]):
@@ -351,7 +351,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             #     result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
             
 
-            result_df = d3m_DataFrame(result, generate_metadata = True)
+            result_df = d3m_DataFrame(result_df, generate_metadata = True)
             print("Result df (final) ", result_df)
             print("learning _df ", learning_df)
             #output = d3m_DataFrame(result_df, generate_metadata = True, source = self) #index = learning_df['d3mIndex'], 
