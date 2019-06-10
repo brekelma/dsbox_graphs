@@ -35,8 +35,8 @@ from d3m.metadata.hyperparams import Uniform, UniformBool, UniformInt, Union, En
 from d3m.primitive_interfaces.base import CallResult, MultiCallResult
 from d3m.primitive_interfaces.supervised_learning import SupervisedLearnerPrimitiveBase
 
-#import _config as cfg_
-import config as cfg_
+import _config as cfg_
+#import config as cfg_
 
 
 Input = typing.Union[container.List, container.DataFrame]
