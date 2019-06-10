@@ -98,7 +98,7 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
 
         return_embedding = UniformBool(
                 default = True,
-                description='return embedding as features alongside classification prediction',
+                description='return embedding alongside classification prediction (can be used as classifier otherwise)',
                 semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter']
         )
         
@@ -296,8 +296,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 "id": "48572851-b86b-4fda-961d-f3f466adb58e",
                 "version": "1.0.0",
                 "name": "GCN",
-                "description": "graph convolutional network",
-                # ask about naming convention
+                "description": "Graph convolutional neural networks (GCN) as in Kipf & Welling 2016, generalized to k-hop edge links via Abu-el-Haija et al 2019: https://arxiv.org/abs/1905.00067 (GCN recovered for k = 1).  In particular, learns weight transformation of feature matrix X for various powers of adjacency matrix, i.e. nonlinearity(A^k X W), and concatenates into an embedding layer.  Feature input X may be of the form: identity matrix (node_id) w/ node features appended as columns.  Specify order using 'adjacency_order' hyperparam.  Expects list of [learning_df, nodes_df, edges_df] as input (e.g. by running common_primitives.normalize_graphs + data_tranformation.graph_to_edge_list.DSBOX)",
                 "python_path": "d3m.primitives.feature_construction.gcn_mixhop.DSBOX",
                 "original_python_path": "gcn_mix.GCN",
                 "source": {
