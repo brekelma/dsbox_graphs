@@ -425,8 +425,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 self.training_outputs = training_outputs
 
                 self.outputs_tensor = tf.constant(self.training_outputs)
-                self.inds_tensor = tf.constant(self.training_inds, dtype = tf.int32)
+                self.inds_tensor = tf.constant(np.squeeze(self.training_inds), dtype = tf.int32)
 
+                self.y_true = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
+                self.inds = keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
 
         def _get_source_dest(self, edges_df, source_types = None, dest_types = None):
                 if source_types is None:
@@ -628,8 +630,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         adj_input = keras.layers.Input(shape = (self._num_training_nodes,), name = 'adjacency', dtype = 'float32')#, sparse = True)
                         feature_input = keras.layers.Input(shape = (self._input_columns,), name = 'features', dtype = 'float32')#, sparse =True)
                 
-                y_true = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
-                inds = keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
+                self.y_true = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
+                self.inds = keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
 
                 #y_true = keras.layers.Input(shape = (self.training_outputs.shape[-1],), name = 'y_true')
                 #inds = keras.layers.Input(shape = (None,), dtype=tf.int32, name = 'training_inds')
@@ -690,16 +692,16 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 
                 # Note: Y-true is an input tensor
-                y_pred_slice = keras.layers.Lambda(semi_supervised_slice)([y_pred, inds])#, arguments = {'inds': self.training_inds})(y_pred)
+                y_pred_slice = keras.layers.Lambda(semi_supervised_slice)([y_pred, self.inds])#, arguments = {'inds': self.training_inds})(y_pred)
                 # doesn't acutally use total / keep
                 
-                y_true_slice = keras.layers.Lambda(semi_supervised_slice)([y_true, inds])
+                y_true_slice = keras.layers.Lambda(semi_supervised_slice)([self.y_true, self.inds])
 
                 slice_loss = keras.layers.Lambda(loss_fun, arguments = {'function': loss_function, 'first': self._num_labeled_nodes})([y_true_slice, y_pred_slice])
                 
 
 
-                full_loss = keras.layers.Lambda(assign_scattered)([slice_loss, y_pred, inds])
+                full_loss = keras.layers.Lambda(assign_scattered)([slice_loss, y_pred, self.inds])
                 #full_loss = keras.layers.Lambda(dummy_concat, arguments = {'total': self._num_training_nodes, 'keep':self._num_labeled_nodes})([outputs, y_pred])
                 
                 #y_pred_full = keras.layers.Lambda(dummy_concat, arguments = {'total': self._num_training_nodes, 'keep': self._num_labeled_nodes})([y_pred_slice, y_pred])
@@ -722,10 +724,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 loss_functions.append(identity)
                 loss_weights.append(1.0)
         
-
+                # 
                 # fit keras
-                self.model = keras.models.Model(inputs = [y_true, inds, adj_input, feature_input], outputs = outputs)#, feature_input], outputs = outputs)
-                self.pred_model = keras.models.Model(inputs = [inds, adj_input, feature_input], outputs = [y_pred_slice])#, feature_input], outputs = outputs)
+                self.model = keras.models.Model(inputs = [adj_input, feature_input, self.y_true, self.inds], outputs = outputs)#, feature_input], outputs = outputs)
+                self.pred_model = keras.models.Model(inputs =  [adj_input, feature_input, self.inds], outputs = [y_pred_slice])#, feature_input], outputs = outputs)
                 self.embedding_model = keras.models.Model(inputs = [adj_input, feature_input], outputs = [embedding])#, feature_input], outputs = outputs)
                 self.model.compile(optimizer = self._optimizer, loss = loss_functions, loss_weights = loss_weights)
 
@@ -813,8 +815,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         except Exception as e:
                                 print(type(self.training_inds), self.training_inds.shape, np.squeeze(self.training_inds).shape)
                                 print("list ", np.array(list(np.squeeze(self.training_inds))).shape)
+                                print('INDS TENSOR ', self.inds)
                                 #result = self.pred_model.predict([np.squeeze(self.training_inds), _adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
-                                result = self.pred_model.predict([np.squeeze(self.training_inds)[:], _adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
+                                result = self.pred_model.predict([_adj.todense(), _input.todense(),np.squeeze(self.training_inds)[:]], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
                                 #self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0]) #, node_subset = node_subset.values.astype(np.int32))
                                 #self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
                                 #result = self.model.predict([_adj.todense(), _input.todense()], steps = 1)
