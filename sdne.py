@@ -128,7 +128,7 @@ class SDNE_Hyperparams(hyperparams.Hyperparams):
         upper = 20,
         default = 5,
         #q = 1,
-        description = 'seen edge reconstruction weight (to account for sparsity in links for reconstructing adjacency.  matrix B in Wang et al 2016)'
+        description = 'seen edge reconstruction weight (to account for sparsity in links for reconstructing adjacency.  matrix B in Wang et al 2016',
         semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
         )
     alpha = Uniform(
