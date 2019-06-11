@@ -22,8 +22,8 @@ PRIMITIVES = [(p, config) for p in [
     'data_transformation.graph_to_edge_list.DSBOX',
 #        'feature_construction.sdne.DSBOX',
 #        'feature_construction.gcn_mixhop.DSBOX'
-    'feature_construction.graph_transformation.SDNE',
-    'feature_construction.graph_transformation.GCN'
+    'feature_construction.graph_transformer.SDNE',
+    'feature_construction.graph_transformer.GCN'
 ]
 ]
 
