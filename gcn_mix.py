@@ -326,65 +326,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 		learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
 		
 
-
-		if self.hyperparams['line_graph']:
-			# try:
-			#         #idx = edges_df['d3mIndex']
-			#         my_edges = edges_df.join(learning_df, on ='d3mIndex', how='inner')
-			#         #edges_df = edges_df.loc[learning_df['d3mIndex'].astype(np.int32)] #
-			# except Exception as e:
-			#         print()
-			#         print("*"*500)
-			#         print("edges indexing error ", e)
-			#         print("*"*500)
-			#         try:
-			#                edges_df = edges_df.astype(object)
-			#                #pdb.set_trace()
-			#                my_edges = pd.merge(edges_df.assign(x=edges_df.source.astype(int)), 
-			#                                    learning_df.assign(x=learning_df.source_nodeID.astype(int)), 
-			#                                    how = 'right', 
-			#                                    left_on = ['source'],#, 'target'],
-			#                                    right_on = ['source_nodeID'])#, 'target_nodeID'])
-			#                print()
-			#                print(my_edges)
-			#                print()
-			#                my_edges.set_index('d3mIndex')
-			#         except Exception as e:
-			#                 print()
-			#                 print("MERGING EXCEPTION ", e)
-			#                 print()
-			# print(my_edges)
-			#edges_df = my_edges
-			self._num_training_nodes = edges_df.values.shape[0]
-			self._adj = self._make_line_adj(edges_df)
-			self._input = self._make_line_inputs(edges_df)
-		else:
-
-			#nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
-			#node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-
-			try:
-				self._num_training_nodes = node_subset.values.shape[0]
-			except:
-				self._num_training_nodes = nodes_df.values.shape[0]
-			#self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], tensor = True)#, node_subset = node_subset.values.astype(np.int32))
-			#self._input = self._make_input_features(nodes_df, tensor = True)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
-		
-			self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0])#, node_subset = node_subset.values.astype(np.int32))
-			self._input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
-
-		# dealing with outputs
-		#if self._task in ['clf', 'class', 'classification', 'node_clf']:
-
-		target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
-				'https://metadata.datadrivendiscovery.org/types/TrueTarget')
-		use_outputs = False
-		if use_outputs:
-			targets =  get_columns_of_type(outputs, target_types)
-		else:
-			targets =  get_columns_of_type(learning_df, target_types)
-		
-
+		self._adj, self._input, targets = self._get_training_data(edges_df, nodes_df)
 		
 		#if not self.hyperparams['line_graph']:        
 		#        print(edges_df[targets[0]])
@@ -405,7 +347,39 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 		
 		self.fitted = False
 
+	def _get_training_data(self, edges_df, nodes_df, node_subset = None):
+		if self.hyperparams['line_graph']:
+			self._num_training_nodes = edges_df.values.shape[0]
+			_adj = self._make_line_adj(edges_df)
+			_input = self._make_line_inputs(edges_df)
+		else:
 
+			#nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
+			#node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+
+			try:
+				self._num_training_nodes = node_subset.values.shape[0]
+			except:
+				self._num_training_nodes = nodes_df.values.shape[0]
+			#self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], tensor = True)#, node_subset = node_subset.values.astype(np.int32))
+			#self._input = self._make_input_features(nodes_df, tensor = True)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
+		
+			_adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0])#, node_subset = node_subset.values.astype(np.int32))
+			_input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
+
+		# dealing with outputs
+		#if self._task in ['clf', 'class', 'classification', 'node_clf']:
+
+		target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
+				'https://metadata.datadrivendiscovery.org/types/TrueTarget')
+		
+		use_outputs = False
+		if use_outputs:
+			targets =  get_columns_of_type(outputs, target_types)
+		else:
+			targets =  get_columns_of_type(learning_df, target_types)
+
+		return _adj, _input, targets
 
 	def _set_training_values(self, learning_df, targets):
 		self.training_inds = learning_df['d3mIndex'].astype(np.int32).values
@@ -522,12 +496,18 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 			
 			sources = sources.loc[inds] 
 			dests = dests.loc[inds]
-
-
 			#attrs = attrs.loc[inds]
 		
+		print()
+		print("SOURCES ", sources)
+		print("dest columns", dests.columns)
+		print()
+		
+		# ADD SELF CONNECTIONS IN ADJACENCY MATRIX
 		sources[sources.columns[0]] = self.node_enc.transform(sources.values)
 		dests[dests.columns[0]] = self.node_enc.transform(dests.values)
+
+
 		
 		# accomodate weighted graphs ??
 		if tensor:
@@ -627,9 +607,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 				output = self.sess.run([self.y_pred_slice], feed_dict = fd)
 		else:
 			if not _slice:
-				output = self.sess.run([self.y_pred], feed_dict = fd)
+				output = self.sess.run([self.embedding], feed_dict = fd)
 			else:
-				output = self.sess.run([self.y_pred_slice], feed_dict = fd)
+				output = self.sess.run([self.embedding_slice], feed_dict = fd)
 		return output
 
 
@@ -642,6 +622,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 		# ******************************************
 		# Feel free to fill in less important hyperparameters or example architectures here
 		# ******************************************
+		self.keras_fit = False
 		self._task = 'classification'
 		self._act = 'relu'
 		self._epochs = 200 if self._num_training_nodes < 10000 else 50
@@ -733,7 +714,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 		#    loss_functions.append(keras.objectives.mean_squared_error)#mse                                            
 
 
-		
+		self.embedding_slice = keras.layers.Lambda(semi_supervised_slice)([self.embedding, self.inds])
 		# Note: Y-true is an input tensor
 		self.y_pred_slice = keras.layers.Lambda(semi_supervised_slice)([self.y_pred, self.inds])#, arguments = {'inds': self.training_inds})(y_pred)
 		# doesn't acutally use total / keep
@@ -812,33 +793,33 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
 
 		# KERAS FITTING 
+		if self.keras_fit:
+			# fit keras
+			self.model = keras.models.Model(inputs = [adj_input, feature_input, self.y_true, self.inds], outputs = outputs)#, feature_input], outputs = outputs)
+			self.pred_model = keras.models.Model(inputs =  [adj_input, feature_input, self.inds], outputs = [y_pred_slice])#, feature_input], outputs = outputs)
+			self.embedding_model = keras.models.Model(inputs = [adj_input, feature_input], outputs = [embedding])#, feature_input], outputs = outputs)
+			self.model.compile(optimizer = self._optimizer, loss = loss_functions, loss_weights = loss_weights)
 
-		# # fit keras
-		# self.model = keras.models.Model(inputs = [adj_input, feature_input, self.y_true, self.inds], outputs = outputs)#, feature_input], outputs = outputs)
-		# self.pred_model = keras.models.Model(inputs =  [adj_input, feature_input, self.inds], outputs = [y_pred_slice])#, feature_input], outputs = outputs)
-		# self.embedding_model = keras.models.Model(inputs = [adj_input, feature_input], outputs = [embedding])#, feature_input], outputs = outputs)
-		# self.model.compile(optimizer = self._optimizer, loss = loss_functions, loss_weights = loss_weights)
+		      
+			# self.model.fit(x = [np.squeeze(self.training_outputs), np.squeeze(self.training_inds)], #[self._adj],#, self._input], # already specified as tensors
+			#                y = [np.squeeze(self.training_outputs)],# + [np.squeeze(self.training_outputs)],                               
+			#                shuffle = False, epochs = self._epochs, 
+			#                batch_size = self._num_training_nodes) #self.training_inds.shape[0])
+			#                #batch_size = self._num_training_nodes) 
 
-	      
-		# # self.model.fit(x = [np.squeeze(self.training_outputs), np.squeeze(self.training_inds)], #[self._adj],#, self._input], # already specified as tensors
-		# #                y = [np.squeeze(self.training_outputs)],# + [np.squeeze(self.training_outputs)],                               
-		# #                shuffle = False, epochs = self._epochs, 
-		# #                batch_size = self._num_training_nodes) #self.training_inds.shape[0])
-		# #                #batch_size = self._num_training_nodes) 
-
-		# self.model.fit(x = [self._adj, self._input], #[self._adj],#, self._input], # already specified as tensors
-		# 	       y = [self.training_outputs],# + [np.squeeze(self.training_outputs)],                               
-		# 	       shuffle = False, epochs = self._epochs, 
-		# 	       batch_size = self._num_training_nodes,
-		# 	       verbose = 0
-		# ) #self.training_inds.shape[0])
-		# 	       #batch_size = self._num_training_nodes) 
-		
-		# # all must have same # of samples
-		# # self.model.fit(x = [self.training_outputs, self.training_inds, self._adj, self._input], #[self._adj],#, self._input], # already specified as tensors
-		# #                y = [self.training_outputs],# + [np.squeeze(self.training_outputs)],                               
-		# #                shuffle = False, epochs = self._epochs, 
-		# #                batch_size = self._num_training_nodes) #self.training_inds.shape[0])
+			self.model.fit(x = [self._adj, self._input], #[self._adj],#, self._input], # already specified as tensors
+				       y = [self.training_outputs],# + [np.squeeze(self.training_outputs)],                               
+				       shuffle = False, epochs = self._epochs, 
+				       batch_size = self._num_training_nodes,
+				       verbose = 0
+			) #self.training_inds.shape[0])
+				       #batch_size = self._num_training_nodes) 
+			
+			# all must have same # of samples
+			# self.model.fit(x = [self.training_outputs, self.training_inds, self._adj, self._input], #[self._adj],#, self._input], # already specified as tensors
+			#                y = [self.training_outputs],# + [np.squeeze(self.training_outputs)],                               
+			#                shuffle = False, epochs = self._epochs, 
+			#                batch_size = self._num_training_nodes) #self.training_inds.shape[0])
 
 		self.fitted = True
 		make_keras_pickleable()
@@ -863,53 +844,35 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 	def produce(self, *, inputs : Input, outputs : Output, timeout : float = None, iterations : int = None) -> CallResult[Output]:
 		make_keras_pickleable()
 		if self.fitted:
+
 			# embed ALL (even unlabelled examples)
 			learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
-			if not self.hyperparams['line_graph']:
-				##node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-				##self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-				##self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]) #.index])
-				#nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
-				##node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-				##self._num_training_nodes = node_subset.values.shape[0]
-				#adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-				#inp = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
-				
-
-				try:
-					self._num_training_nodes = node_subset.values.shape[0]
-				except:
-					self._num_training_nodes = nodes_df.values.shape[0]
-				_adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0])#, node_subset = node_subset.values.astype(np.int32))
-				_input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
-				
-
-			target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
-				'https://metadata.datadrivendiscovery.org/types/TrueTarget')
-		    
-			targets =  get_columns_of_type(learning_df, target_types)
-			
+			_adj, _input, targets = self._get_training_data(edges_df, nodes_df)
+			# sets inds, target tensors
 			self._set_training_values(learning_df, targets)
 
 
-			#try:
-			#        output_pred = self.model.layers[-1].output # all layer outputs
-			#        func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output_pred])
-			#        
-			 #       result = func([adj, inp, 1.])[0]
-			#except: # could be preferable, but both prediction methods should work
-			try:
-				result = self.pred_model.predict([_adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
-			except Exception as e:
-				print(type(self.training_inds), self.training_inds.shape, np.squeeze(self.training_inds).shape)
-				#result = self.pred_model.predict([np.squeeze(self.training_inds), _adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
-				result = self.pred_model.predict([_adj.todense(), _input.todense(),np.squeeze(self.training_inds)[:]], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
-				#self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0]) #, node_subset = node_subset.values.astype(np.int32))
-				#self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
-				#result = self.model.predict([_adj.todense(), _input.todense()], steps = 1)
 
 
-			
+			if self.keras_fit:
+				try:
+					result = self.pred_model.predict([_adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
+				except Exception as e:
+					print(type(self.training_inds), self.training_inds.shape, np.squeeze(self.training_inds).shape)
+					#result = self.pred_model.predict([np.squeeze(self.training_inds), _adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
+					result = self.pred_model.predict([_adj.todense(), _input.todense(),np.squeeze(self.training_inds)[:]], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
+					#self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0]) #, node_subset = node_subset.values.astype(np.int32))
+					#self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
+					#result = self.model.predict([_adj.todense(), _input.todense()], steps = 1)
+
+			else:
+				result = self.pred(_adj, _input, embedding = False, _slice = True)
+				print()
+				print("*"*50)
+				print("Result of tf prediction ", result.shape)
+				print("*"*50)
+				print()
+
 			result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
 
 
@@ -920,17 +883,22 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 				#         func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output_embed])
 				#         embed = func([adj, inp, 1.])[0]
 				# except:
-				try:
-					embed = self.embedding_model.predict([_adj.todense(), _input.todense()], steps = 1)
-				except:
-					embed = self.embedding_model.predict([self.training_inds, _adj.todense(), _input.todense()], steps = 1)
-					
-				embed = embed[self.training_inds]
+				if self.keras_fit:
+					try:
+						embed = self.embedding_model.predict([_adj.todense(), _input.todense()], steps = 1)
+					except:
+						embed = self.embedding_model.predict([self.training_inds, _adj.todense(), _input.todense()], steps = 1)
+						
+					embed = embed[self.training_inds]
+				else:
+					embed = self.pred(_adj, _input, embedding = True, slice = True)
+					print("*"*50)
+					print("embed result ", embed.shape)
+					print("*"*50)
 				try:
 					result = np.concatenate([result, embed], axis = -1)
 				except:
 					result = np.concatenate([np.expand_dims(result, 1), embed], axis = -1)
-
 
 
 		else:
