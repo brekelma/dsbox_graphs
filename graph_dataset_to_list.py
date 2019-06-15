@@ -6,6 +6,7 @@ from d3m import container, utils as d3m_utils
 from d3m.base import utils as base_utils
 from d3m.metadata import base as metadata_base, hyperparams
 from d3m.primitive_interfaces import base, transformer
+from d3m.container import DataFrame as d3m_DataFrame
 
 import common_primitives
 
@@ -58,21 +59,91 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
         except:
             pass
         print('resources ?? ', inputs.keys())
+        for k in inputs.keys():
+            print(k, inputs[k])
         
+        edge_list = False
         try:
             nodes_id, nodes_df = base_utils.get_tabular_resource(inputs, '0_nodes')
         except:
-            nodes_id, nodes_df = base_utils.get_tabular_resource(inputs, 'nodes')
-        try:
-            edges_id, edges_df = base_utils.get_tabular_resource(inputs, '0_edges')
-        except:
-            edges_id, edges_df = base_utils.get_tabular_resource(inputs, 'edges')
+            try:
+                nodes_id, nodes_df = base_utils.get_tabular_resource(inputs, 'nodes')
+            except:
+                edges_id, edges_df = base_utils.get_tabular_resource(inputs, '1')
+                print(edges_df.metadata)
+                #nodes_df =  concat  .unique()
+                edge_list = True
+        if not edge_list:       
+            try:
+                edges_id, edges_df = base_utils.get_tabular_resource(inputs, '0_edges')
+            except:    
+                edges_id, edges_df = base_utils.get_tabular_resource(inputs, 'edges')
+        
+
+        if edge_list:
+
+
+            node_cols = [col for col in learning_df.columns if 'nodeID' in col or 'attr' in col]
+            nodes_df = learning_df[node_cols].copy() #d3m_DataFrame(learning_df[node_cols], generate_metadata = True)
+            print(nodes_df)
+            try:
+                node_cols.remove('nodeID')
+            except:
+                pass
+            print(node_cols)
+            #learning_df.drop(node_cols, axis = 1, inplace = True)
+            
+            #learning_df = d3m_DataFrame(learning_df.drop(node_cols, axis = 1), generate_metadata = True)
+            print('LEARNING DF')
+            print(learning_df)
+
+            for column_index in range(edges_df.shape[1]):
+                print(edges_df.columns[column_index])
+                col_dict = dict(edges_df.metadata.query((metadata_base.ALL_ELEMENTS, column_index)))
+                #col_dict['structural_type'] = type(1.0)
+                # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
+                #col_dict['name'] = 'corex_' + str(out_df.shape[1] + column_index)
+                if 'v1' in edges_df.columns[column_index].lower() or 'source' in edges_df.columns[column_index].lower():
+                    col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/types/EdgeSource')
+                if 'v2' in edges_df.columns[column_index].lower() or 'dest' in edges_df.columns[column_index].lower():
+                    col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/types/EdgeTarget')
+            
+            edges_df.metadata = edges_df.metadata.update((metadata_base.ALL_ELEMENTS, column_index), col_dict)
+
+
+            for column_index in range(nodes_df.shape[1]):
+                print(nodes_df.columns[column_index])
+                col_dict = dict(nodes_df.metadata.query((metadata_base.ALL_ELEMENTS, column_index)))
+                #col_dict['structural_type'] = type(1.0)
+                # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
+                #col_dict['name'] = 'corex_' + str(out_df.shape[1] + column_index)
+                if 'attr' in nodes_df.columns[column_index].lower():
+                    col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/types/Attribute')
+                
+            nodes_df.metadata = nodes_df.metadata.update((metadata_base.ALL_ELEMENTS, column_index), col_dict)
+            
+            for column_index in range(learning_df.shape[1]):
+                print(learning_df.columns[column_index])
+                col_dict = dict(learning_df.metadata.query((metadata_base.ALL_ELEMENTS, column_index)))
+                #col_dict['structural_type'] = type(1.0)
+                # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
+                #col_dict['name'] = 'corex_' + str(out_df.shape[1] + column_index)
+                if 'attr' in learning_df.columns[column_index].lower():
+                    col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget')
+                
+            learning_df.metadata = learning_df.metadata.update((metadata_base.ALL_ELEMENTS, column_index), col_dict)
+
+
 
         print("EDGES ")
         print(edges_df.index)
         print(edges_df)
-        learning_df.metadata = self._update_metadata(inputs.metadata, learning_id)
-        nodes_df.metadata = self._update_metadata(inputs.metadata, nodes_id)
+        if not edge_list:
+            learning_df.metadata = self._update_metadata(inputs.metadata, learning_id)
+        try:
+            nodes_df.metadata = self._update_metadata(inputs.metadata, nodes_id)
+        except:
+            pass
         edges_df.metadata = self._update_metadata(inputs.metadata, edges_id)
 
         assert isinstance(learning_df, container.DataFrame), type(learning_df)
