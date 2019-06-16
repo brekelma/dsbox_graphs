@@ -7,7 +7,8 @@ from d3m.base import utils as base_utils
 from d3m.metadata import base as metadata_base, hyperparams
 from d3m.primitive_interfaces import base, transformer
 from d3m.container import DataFrame as d3m_DataFrame
-
+from gcn_mix import get_columns_of_type
+import numpy as np
 import common_primitives
 
 __all__ = ('GraphDatasetToList',)
@@ -51,7 +52,7 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
             ],
             'primitive_family': metadata_base.PrimitiveFamily.DATA_TRANSFORMATION,
         },
-    )
+        )
 
     def produce(self, *, inputs: Inputs, timeout: float = None, iterations: int = None) -> base.CallResult[Outputs]:
         try:
@@ -70,7 +71,7 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
                 nodes_id, nodes_df = base_utils.get_tabular_resource(inputs, 'nodes')
             except:
                 edges_id, edges_df = base_utils.get_tabular_resource(inputs, '1')
-                print(edges_df.metadata)
+                #print(edges_df.metadata)
                 #nodes_df =  concat  .unique()
                 edge_list = True
         if not edge_list:       
@@ -79,40 +80,75 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
             except:    
                 edges_id, edges_df = base_utils.get_tabular_resource(inputs, 'edges')
         
+                
+        if edge_list:            
+            nodes = list(edges_df[[c for c in edges_df.columns if 'source' in c.lower() or 'v1' in c.lower() or 'node1' in c.lower()][0]].astype(np.int32).values)
+            nodes.extend(list(edges_df[[c for c in edges_df.columns if 'dest' in c.lower() or 'target' in c.lower() or 'v2' in c.lower() or 'node2' in c.lower()][0]].astype(np.int32).values))
+            nodes = np.unique(np.array(nodes))
 
-        if edge_list:
+            node_cols = [col for col in learning_df.columns if 'nodeID' in col or 'attr' in col or 'fea' in col]
+            node_col_inds = [learning_df.columns.get_loc(c) for c in node_cols]
+            nodes_df = d3m_DataFrame(np.zeros(shape = (nodes.shape[0], len(node_cols))), columns = node_cols, index = nodes)
+            nodes_df['nodeID'] = nodes
+            
+
+            ldf_vals = learning_df['d3mIndex'].astype(np.int32).values
+            #print("NODES INDEX ", nodes_df.index)
+            
 
 
-            node_cols = [col for col in learning_df.columns if 'nodeID' in col or 'attr' in col]
-            nodes_df = learning_df[node_cols].copy() #d3m_DataFrame(learning_df[node_cols], generate_metadata = True)
-            print(nodes_df)
+            for j in range(ldf_vals.shape[0]):
+                #import IPython; IPython.embed()
+             #   print('NODES ')
+             #   print(nodes_df.loc[int(ldf_vals[j])])
+             #   print('LEARNING ')
+             #   print(learning_df[node_cols].values[j])
+                nodes_df.loc[ldf_vals[j]] = learning_df[node_cols].values[j]  
+
+            print("NODES DF ", nodes_df)
+
+            #nodes_df = learning_df[node_cols].copy() #d3m_DataFrame(learning_df[node_cols], generate_metadata = True)
+            #print(nodes_df)
+            #print("learning df OF TYPE ")
+            semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute')
+            #print("*"*50)
+            new_meta = metadata_base.DataMetadata()
+            learning_df.metadata = new_meta.generate(learning_df)
+            new_meta = metadata_base.DataMetadata()
+            nodes_df.metadata = new_meta.generate(nodes_df)
+            #print(nodes_df.metadata.pretty_print())
+            #print("*"*50)
+            #print("learning df metadata ")
+            #print(learning_df.metadata.pretty_print())
+            #print(get_columns_of_type(learning_df, semantic_types))
+            #print("*"*50)
+            #print(edges_df.metadata.pretty_print())
             try:
                 node_cols.remove('nodeID')
             except:
                 pass
-            print(node_cols)
+            #print(node_cols)
             #learning_df.drop(node_cols, axis = 1, inplace = True)
             
             #learning_df = d3m_DataFrame(learning_df.drop(node_cols, axis = 1), generate_metadata = True)
-            print('LEARNING DF')
-            print(learning_df)
-
+            #print('LEARNING DF')
+            #print(learning_df)
+            
             for column_index in range(edges_df.shape[1]):
-                print(edges_df.columns[column_index])
+                #print(edges_df.columns[column_index])
                 col_dict = dict(edges_df.metadata.query((metadata_base.ALL_ELEMENTS, column_index)))
                 #col_dict['structural_type'] = type(1.0)
                 # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
                 #col_dict['name'] = 'corex_' + str(out_df.shape[1] + column_index)
-                if 'v1' in edges_df.columns[column_index].lower() or 'source' in edges_df.columns[column_index].lower():
+                if 'v1' in edges_df.columns[column_index].lower() or 'source' in edges_df.columns[column_index].lower() or 'node1' in edges_df.columns[column_index].lower():
                     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/types/EdgeSource')
-                if 'v2' in edges_df.columns[column_index].lower() or 'dest' in edges_df.columns[column_index].lower():
+                if 'v2' in edges_df.columns[column_index].lower() or 'dest' in edges_df.columns[column_index].lower() or 'target' in edges_df.columns[column_index].lower() or 'node2' in edges_df.columns[column_index].lower():
                     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/types/EdgeTarget')
             
             edges_df.metadata = edges_df.metadata.update((metadata_base.ALL_ELEMENTS, column_index), col_dict)
 
 
             for column_index in range(nodes_df.shape[1]):
-                print(nodes_df.columns[column_index])
                 col_dict = dict(nodes_df.metadata.query((metadata_base.ALL_ELEMENTS, column_index)))
                 #col_dict['structural_type'] = type(1.0)
                 # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
@@ -123,7 +159,6 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
             nodes_df.metadata = nodes_df.metadata.update((metadata_base.ALL_ELEMENTS, column_index), col_dict)
             
             for column_index in range(learning_df.shape[1]):
-                print(learning_df.columns[column_index])
                 col_dict = dict(learning_df.metadata.query((metadata_base.ALL_ELEMENTS, column_index)))
                 #col_dict['structural_type'] = type(1.0)
                 # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
@@ -134,10 +169,6 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
             learning_df.metadata = learning_df.metadata.update((metadata_base.ALL_ELEMENTS, column_index), col_dict)
 
 
-
-        print("EDGES ")
-        print(edges_df.index)
-        print(edges_df)
         if not edge_list:
             learning_df.metadata = self._update_metadata(inputs.metadata, learning_id)
         try:
@@ -151,13 +182,13 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
         assert isinstance(edges_df, container.DataFrame), type(edges_df)
 
         #learning_df.index.name = 'd3mIndex'
-        print('learning df ')
-        print(learning_df)
-        print("learning df index before ", learning_df.index)
+        #print('learning df ')
+        #print(learning_df)
+        #print("learning df index before ", learning_df.index)
         learning_df.reindex(index = learning_df['d3mIndex'])#set_index('d3mIndex')
-        print("learning df index after ", learning_df.index)
-        print("nodes")
-        print(nodes_df)
+        #print("learning df index after ", learning_df.index)
+        #print("nodes")
+        #print(nodes_df)
         return_list = container.List([learning_df, nodes_df, edges_df], generate_metadata = True)
         #return_list = container.List([nodes_df, edges_df], generate_metadata = True)
         return base.CallResult(return_list)

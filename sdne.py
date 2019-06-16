@@ -203,7 +203,10 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                       'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
         attrs = get_columns_of_type(edges_df, attr_types)
         
-
+        print("*"*500)
+        print("SOURCES ", sources)
+        print("DEsts ", dests)
+        print("*"*500)
         sources = self.node_enc.transform(sources.values)
         dests = self.node_enc.transform(dests.values)
 
@@ -247,10 +250,23 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         #self.training_data = G
 
         self.node_enc = LabelEncoder()
-
+        print("")
+        print("NODES DF ", nodes_df)
         id_col = [i for i in nodes_df.columns if 'node' in i and 'id' in i.lower()][0]
-        self.node_enc.fit(nodes_df[id_col].values)
-
+        print('nodes id ', nodes_df['id_col'].astype(np.int32))
+        try:
+            self.node_enc.fit(nodes_df[id_col].astype(np.int32).values)
+        except:
+            to_drop = [i for i in learning_df['d3mIndex'].astype(np.int32).values]
+            node_inds = [i for i in nodes_df['nodeID'].astype(np.int32).values]
+            to_drop = np.setdiff1d(node_inds, to_drop)
+            nodes_df.drop(to_drop)
+            print("DROPPING ")
+            print(nodes_df)
+            print("DROPPED")
+            #nodes_df = nodes_df.loc[[i for i in learning_df['d3mIndex'].astype(np.int32).values]]
+            self.node_enc.fit(nodes_df[id_col].astype(np.int32).values)
+        
         other_training_data = self._make_adjacency(edges_df, nodes_df.shape[0], tensor = False)
         return other_training_data
 
