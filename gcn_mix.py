@@ -321,8 +321,8 @@ class GCN_Network(object):
                         except:
                                 lr = self._lr
                         preds, loss_value = self.step(adj, features, lr)
-                        self.logger.write(str("Epoch "+i+"Loss "+str(np.mean(loss_value))))
-                        #print("Epoch ", i, " Loss ", np.mean(loss_value))
+                        self.logger.info(str("Epoch "+str(i)+"Loss "+str(np.mean(loss_value))))
+                        print("Epoch ", i, " Loss ", np.mean(loss_value))
                         if time.time()-tic > 3000:
                                 break
 
@@ -809,8 +809,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 if self.node_encode is None:
                     self.node_encode = LabelEncoder()
                     self.node_encode.fit(to_fit)
-                    self._num_training_nodes = self.node_encode.classes_.shape[0]
-                    #self._num_training_nodes = np.unique(to_fit).shape[0]
+                    try:
+                            self._num_training_nodes = self.node_encode.classes_.shape[0]
+                    except:
+                            self._num_training_nodes = np.unique(to_fit).shape[0]
                     num_nodes = self._num_training_nodes
                     
                     print("NODES PRE-ENCODE ", to_fit)
