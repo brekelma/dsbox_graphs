@@ -29,6 +29,9 @@ import tempfile
 
 from time import time
 
+
+
+
 def make_keras_pickleable():
     def __getstate__(self):
         model_str = ""
@@ -42,7 +45,7 @@ def make_keras_pickleable():
         with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
             fd.write(state['model_str'])
             fd.flush()
-            model = keras.models.load_model(fd.name, custom_objects = {'weighted_mse_x': weighted_mse_x, 'weighted_mse_y': weighted_mse_y})#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': ec\ho_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})                                                                                          
+            model = keras.models.load_model(fd.name, custom_objects = {'weighted_mse_x': SDNE.weighted_mse_x, 'weighted_mse_y': SDNE.weighted_mse_y})#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': ec\ho_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})                                                                                          
             self.__dict__ = model.__dict__
 
 
@@ -99,6 +102,29 @@ class SDNE(StaticGraphEmbedding):
     def get_method_summary(self):
         return '%s_%d' % (self._method_name, self._d)
 
+
+    def weighted_mse_x(self, y_true, y_pred):#, node_num):
+            ''' Hack: This fn doesn't accept additional arguments.
+                      We use y_true to pass them.
+                y_pred: Contxains x_hat - x
+                y_true: Contains [b, deg]
+            '''
+            return KBack.sum(
+                KBack.square(y_pred * y_true[:, 0:self._node_num]),
+                axis=-1) / y_true[:, self._node_num]
+
+    def weighted_mse_y(self, y_true, y_pred):#, min_batch_size):
+            ''' Hack: This fn doesn't accept additional arguments.
+                      We use y_true to pass them.
+            y_pred: Contains y2 - y1
+            y_true: Contains s12
+            '''
+            min_batch_size = KBack.shape(y_true)[0]
+            return KBack.reshape(
+                KBack.sum(KBack.square(y_pred), axis=-1),
+                [min_batch_size, 1]
+            ) * y_true
+
     def learn_embedding(self, graph=None, edge_f=None,
                         is_weighted=False, no_python=False):
         make_keras_pickleable()
@@ -154,27 +180,6 @@ class SDNE(StaticGraphEmbedding):
         #               output_shape=lambda L: L[1])
 
         # Objectives
-        def weighted_mse_x(y_true, y_pred):
-            ''' Hack: This fn doesn't accept additional arguments.
-                      We use y_true to pass them.
-                y_pred: Contxains x_hat - x
-                y_true: Contains [b, deg]
-            '''
-            return KBack.sum(
-                KBack.square(y_pred * y_true[:, 0:self._node_num]),
-                axis=-1) / y_true[:, self._node_num]
-
-        def weighted_mse_y(y_true, y_pred):
-            ''' Hack: This fn doesn't accept additional arguments.
-                      We use y_true to pass them.
-            y_pred: Contains y2 - y1
-            y_true: Contains s12
-            '''
-            min_batch_size = KBack.shape(y_true)[0]
-            return KBack.reshape(
-                KBack.sum(KBack.square(y_pred), axis=-1),
-                [min_batch_size, 1]
-            ) * y_true
 
         # Model
         self._model = Model(input=x_in, output=[x_diff1, x_diff2, y_diff])
@@ -182,7 +187,7 @@ class SDNE(StaticGraphEmbedding):
         # adam = Adam(lr=self._xeta, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
         self._model.compile(
             optimizer=sgd,
-            loss=[weighted_mse_x, weighted_mse_x, weighted_mse_y],
+            loss=[self.weighted_mse_x, self.weighted_mse_x, self.weighted_mse_y],
             loss_weights=[1, 1, self._alpha]
         )
 
