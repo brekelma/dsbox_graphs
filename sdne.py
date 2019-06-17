@@ -54,7 +54,7 @@ def make_keras_pickleable():
         with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
             fd.write(state['model_str'])
             fd.flush()
-            model = keras.models.load_model(fd.name, custom_objects = {'weighted_mse_x': sdne.SDNE.weighted_mse_x, 'weighted_mse_y': sdne.SDNE.weighted_mse_y})#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': echo_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})
+            model = keras.models.load_model(fd.name, custom_objects = {'sdne.SDNE': sdne.SDNE, 'weighted_mse_x': sdne.SDNE.weighted_mse_x, 'weighted_mse_y': sdne.SDNE.weighted_mse_y})#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': echo_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})
         self.__dict__ = model.__dict__
         
 
