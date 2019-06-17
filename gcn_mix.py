@@ -1222,7 +1222,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 return learning_df, nodes_df, edges_df
 
-                                                 
+                                             
         def produce(self, *, inputs : Input, outputs : Output, timeout : float = None, iterations : int = None) -> CallResult[Output]:
                 make_keras_pickleable()
                 if self.fitted:
@@ -1234,8 +1234,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         self._set_training_values(learning_df, targets)
 
 
-                        print("PRODUCE ", learning_df)
-                        print("NODES ", nodes_df)
+                        #print("PRODUCE ", learning_df)
+                        #print("NODES ", nodes_df)
 
                         if False:#self.keras_fit:
                                 try:
