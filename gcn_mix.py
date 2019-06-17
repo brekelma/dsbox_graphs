@@ -681,7 +681,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 #self._label_unique = np.unique(targets).shape[0]
                 try:
                     self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
-                    self.label_encode = None
                 except:
                     self.label_encode = LabelEncoder()
                     self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
@@ -1255,7 +1254,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
 
                         if self.label_encode is not None:
-                                result = self.label_encode.inverse_transform(result)
+                                try:
+                                        result = self.label_encode.inverse_transform(result)
+                                except:
+                                        pass
         
                         # line graph produce doesn't have to give a single prediction! can return softmax               
                         if self.hyperparams['return_embedding']:
