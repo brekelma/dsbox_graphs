@@ -3,6 +3,7 @@ import sys
 import typing
 import networkx
 import numpy as np
+from pandas import to_numeric
 
 import tensorflow as tf
 #from GEM.gem.embedding import node2vec
@@ -207,8 +208,8 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         print("SOURCES ", sources)
         print("DEsts ", dests)
         print("*"*500)
-        sources = self.node_enc.transform(sources.values)
-        dests = self.node_enc.transform(dests.values)
+        sources = self.node_enc.transform(sources.astype(np.int32).values)
+        dests = self.node_enc.transform(dests.astype(np.int32).values)
 
 
         if tensor:
@@ -252,8 +253,8 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         self.node_enc = LabelEncoder()
         print("")
         print("NODES DF ", nodes_df)
-        id_col = [i for i in nodes_df.columns if 'node' in i and 'id' in i.lower()][0]
-        print('nodes id ', nodes_df['id_col'].astype(np.int32))
+        id_col = [i for i in nodes_df.columns if 'nodeID' in i or ('node' in i and 'id' in i.lower())][0]
+
         try:
             self.node_enc.fit(nodes_df[id_col].astype(np.int32).values)
         except:
@@ -348,29 +349,63 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
             return CallResult(return_list, True, 1)
         else:
+            print("*"*50)
+            print("RESULT ", result.shape)
             result_df = d3m_DataFrame(result, generate_metadata = False)
             
-            result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
+            result_df = result_df.loc[result_df.index.astype(np.int32).isin(learning_df['d3mIndex'].astype(np.int32).values)]
             result_df.index.name = 'd3mIndex'
             #result_df.reset_index(drop = False, inplace = True)
             print("Result post-reset ", result_df)
             #result_df = learning_df.astype(object).join(result_df.astype(object), on = 'd3mIndex')#, on = 'nodeID')
-        
-            # for column_index in range(result_df.shape[1]):
-            #     col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
-            #     #if column_index == 0:
-            #     #    col_dict['name'] = 'nodeID'
-            #     #else:
-            #     col_dict['name'] = 'sdne_' + str(learning_df.shape[1] + column_index)
-            #     col_dict['structural_type'] = type(1.0)
+            
+            result_df = d3m_DataFrame(result_df, generate_metadata = True)
+            for column_index in range(result_df.shape[1]):
+                 col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
+                 if column_index > 0:
+                     col_dict['structural_type'] = type(1.0)
+                 else:
+                     col_dict['structural_type'] = type(1)
+                     #    col_dict['name'] = 'nodeID'
+                 #else:
+                 col_dict['name'] = 'sdne_' + str(learning_df.shape[1]+ column_index)
+                 
             # #    # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
-            #     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
-            #     result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
+                 col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
+            result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
+
+            try_alt = True
+            #if try_alt:
+            try:
+                print("TRYING ALTERNATIVE")
+                
+                output = d3m_DataFrame(result[learning_df['d3mIndex'].astype(np.int32),...], index = learning_df['d3mIndex'].astype(np.int32), generate_metadata = True, source = self)
+                output.index = learning_df.index.copy()
+                output.index = output.index.astype(np.int32)
+
+
+                learning_df.index = learning_df.index.astype(np.int32)
+                self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
+                learning_df['d3mIndex'] = learning_df['d3mIndex'].astype(np.int32)
+                print("Trying combine ")
+                output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],                                                                                                                
+                                           add_index_columns=True,#self.hyperparams['add_index_columns'],                                                                                                          
+                                           inputs=learning_df.astype(np.int32), columns_list=[output], source=self, column_indices=self._training_indices)
+                print("RETURNING ALTERNATIVE")
+                output = output.apply(to_numeric, errors = 'ignore', axis = 1)
+                return CallResult(output, True, 1)
+            except Exception as e:
+                print("*"*50)
+                print("Try ALT failed ", e)
+                print("*"*50)
+
+                print("Result df (final) ", result_df)
+                print("learning _df ", learning_df)
+                return CallResult(result_df, True, 1)
             
 
-            result_df = d3m_DataFrame(result_df, generate_metadata = True)
-            print("Result df (final) ", result_df)
-            print("learning _df ", learning_df)
+
+
             #output = d3m_DataFrame(result_df, generate_metadata = True, source = self) #index = learning_df['d3mIndex'], 
             #output.index = learning_df.index.copy()
             
@@ -384,7 +419,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             #final_df = result_df
             #final_df.set_index('d3mIndex')
             #return CallResult(final_df, True, 1)
-            return CallResult(result_df, True, 1)
+
             #return CallResult(output, True, 1)
 
             #append_cols = result_df.loc[learning_df.index]

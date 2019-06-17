@@ -59,9 +59,6 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
             learning_id, learning_df = base_utils.get_tabular_resource(inputs, 'learningData')
         except:
             pass
-        print('resources ?? ', inputs.keys())
-        for k in inputs.keys():
-            print(k, inputs[k])
         
         edge_list = False
         try:
@@ -71,8 +68,6 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
                 nodes_id, nodes_df = base_utils.get_tabular_resource(inputs, 'nodes')
             except:
                 edges_id, edges_df = base_utils.get_tabular_resource(inputs, '1')
-                #print(edges_df.metadata)
-                #nodes_df =  concat  .unique()
                 edge_list = True
         if not edge_list:       
             try:
@@ -93,53 +88,33 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
             
 
             ldf_vals = learning_df['d3mIndex'].astype(np.int32).values
-            #print("NODES INDEX ", nodes_df.index)
+
             
 
 
             for j in range(ldf_vals.shape[0]):
-                #import IPython; IPython.embed()
-             #   print('NODES ')
-             #   print(nodes_df.loc[int(ldf_vals[j])])
-             #   print('LEARNING ')
-             #   print(learning_df[node_cols].values[j])
                 nodes_df.loc[ldf_vals[j]] = learning_df[node_cols].values[j]  
 
-            print("NODES DF ", nodes_df)
 
-            #nodes_df = learning_df[node_cols].copy() #d3m_DataFrame(learning_df[node_cols], generate_metadata = True)
-            #print(nodes_df)
-            #print("learning df OF TYPE ")
+
+
+
             semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute')
-            #print("*"*50)
+
             new_meta = metadata_base.DataMetadata()
             learning_df.metadata = new_meta.generate(learning_df)
             new_meta = metadata_base.DataMetadata()
             nodes_df.metadata = new_meta.generate(nodes_df)
-            #print(nodes_df.metadata.pretty_print())
-            #print("*"*50)
-            #print("learning df metadata ")
-            #print(learning_df.metadata.pretty_print())
-            #print(get_columns_of_type(learning_df, semantic_types))
-            #print("*"*50)
-            #print(edges_df.metadata.pretty_print())
+
             try:
                 node_cols.remove('nodeID')
             except:
                 pass
-            #print(node_cols)
-            #learning_df.drop(node_cols, axis = 1, inplace = True)
-            
-            #learning_df = d3m_DataFrame(learning_df.drop(node_cols, axis = 1), generate_metadata = True)
-            #print('LEARNING DF')
-            #print(learning_df)
             
             for column_index in range(edges_df.shape[1]):
-                #print(edges_df.columns[column_index])
+
                 col_dict = dict(edges_df.metadata.query((metadata_base.ALL_ELEMENTS, column_index)))
-                #col_dict['structural_type'] = type(1.0)
-                # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
-                #col_dict['name'] = 'corex_' + str(out_df.shape[1] + column_index)
+
                 if 'v1' in edges_df.columns[column_index].lower() or 'source' in edges_df.columns[column_index].lower() or 'node1' in edges_df.columns[column_index].lower():
                     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/types/EdgeSource')
                 if 'v2' in edges_df.columns[column_index].lower() or 'dest' in edges_df.columns[column_index].lower() or 'target' in edges_df.columns[column_index].lower() or 'node2' in edges_df.columns[column_index].lower():
@@ -150,9 +125,7 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
 
             for column_index in range(nodes_df.shape[1]):
                 col_dict = dict(nodes_df.metadata.query((metadata_base.ALL_ELEMENTS, column_index)))
-                #col_dict['structural_type'] = type(1.0)
-                # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
-                #col_dict['name'] = 'corex_' + str(out_df.shape[1] + column_index)
+
                 if 'attr' in nodes_df.columns[column_index].lower():
                     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/types/Attribute')
                 
@@ -181,14 +154,8 @@ class GraphDatasetToList(transformer.TransformerPrimitiveBase[Inputs, Outputs, H
         assert isinstance(nodes_df, container.DataFrame), type(nodes_df)
         assert isinstance(edges_df, container.DataFrame), type(edges_df)
 
-        #learning_df.index.name = 'd3mIndex'
-        #print('learning df ')
-        #print(learning_df)
-        #print("learning df index before ", learning_df.index)
+
         learning_df.reindex(index = learning_df['d3mIndex'])#set_index('d3mIndex')
-        #print("learning df index after ", learning_df.index)
-        #print("nodes")
-        #print(nodes_df)
         return_list = container.List([learning_df, nodes_df, edges_df], generate_metadata = True)
         #return_list = container.List([nodes_df, edges_df], generate_metadata = True)
         return base.CallResult(return_list)

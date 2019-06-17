@@ -46,7 +46,8 @@ Input = typing.Union[container.List, container.DataFrame]
 Output = container.DataFrame
                             
      
-                                        
+import logging
+_logger = logging.getLogger(__name__)
 
 # all primitives must be pickle-able, and this should do the trick for Keras models
 
@@ -55,11 +56,16 @@ def loss_fun(inputs, function = None, first = None):
                 import importlib
                 mod = importlib.import_module('keras.objectives')
                 function = getattr(mod, function)
-        try:
-                return function(inputs[0], inputs[-1]) if function is not None else inputs
-        except:
-                inputs[0] = tf.gather(inputs[0], np.arange(first))
-                return function(inputs[0], inputs[-1]) if function is not None else inputs
+        #try:
+        print("*"*500)
+        print("LOSS FUNCTION ", function)
+        print("inputs ", inputs)
+        print("*"*500)
+
+        return function(inputs[0], inputs[-1]) #if function is not None else inputs
+        #except:
+        #        inputs[0] = tf.gather(inputs[0], np.arange(first))
+        #        return function(inputs[0], inputs[-1]) #if function is not None else inputs
 
 
 
@@ -190,7 +196,7 @@ class GCN_Layer(keras.layers.Layer):
 
 class GCN_Network(object):
         def __init__(self, nodes = None, units = [100, 100], mix_hops = 2, modes = 1, lr = 0.0005, extra_fc = 100, 
-                        outputs_tensor = None, inds_tensor = None, sparse = True, 
+                        outputs_tensor = None, inds_tensor = None, sparse = True, epochs = 100, logger = None,
                         labeled = None, input_columns = None, label_unique = None):
                 self._num_training_nodes = nodes
                 self.outputs_tensor = outputs_tensor
@@ -201,17 +207,18 @@ class GCN_Network(object):
                 self._input_columns = input_columns
                 self._label_unique = label_unique
                 self._input_columns = input_columns
+                
+                self.logger = logger
 
-
-                self.adj_inds = tf.placeholder(tf.int64)
-                self.adj_vals = tf.placeholder(tf.float32)
-                self.adj_input = tf.SparseTensor(self.adj_inds, self.adj_vals, dense_shape = (self._num_training_nodes, self._num_training_nodes))
+                #self.adj_inds = tf.placeholder(tf.int64)
+                #self.adj_vals = tf.placeholder(tf.float32)
+                #self.adj_input = tf.SparseTensor(self.adj_inds, self.adj_vals, dense_shape = (self._num_training_nodes, self._num_training_nodes))
 
 
                 self.keras_fit = False
                 self._task = 'classification'
                 self._act = 'relu'
-                self._epochs = 200 if self._num_training_nodes < 10000 else 50
+                self._epochs = epochs #self.hyperparams['epochs'] #200 if self._num_training_nodes < 10000 else 50
                 self._units = units #[self.hyperparams['layer_size']]*self.hyperparams['layers']
                 self._mix_hops = mix_hops #self.hyperparams['adjacency_order']
                 self._modes = modes
@@ -231,15 +238,16 @@ class GCN_Network(object):
                 else:
                         self.adj_input = tf.sparse_placeholder(tf.float32, shape = (self._num_training_nodes, self._num_training_nodes))
                 
-
+                #print("ADJ INPUT ", self.adj_input)
                 self.feature_input = tf.placeholder(tf.float32, shape = (self._num_training_nodes, self._input_columns)) #tf.sparse_placeholder(tf.float32, shape = (self._num_training_nodes, self._num_training_nodes))
-
+                #print("FEATURE INPUT ", self.feature_input)
                 # using self.y_true and self.inds right now...
                 #self.y = tf.placeholder(tf.float32, [None, self.training_outputs.shape[-1]], name='y')
                 #self.ph_indices = tf.placeholder(tf.int64, [None])
                 
 
                 #feature_input = keras.layers.Input(shape = self._input.shape[1:], name = 'features')#sparse =True) #tensor =  if tensor else tf.convert_to_tensor(to_return))
+                #adj_normalize = tf.divide(tf.sum(self.adj_input, axis = -1))
                 self.embedding = self._make_gcn(self.adj_input, self.feature_input,
                         h_dims = self._units,
                         mix_hops = self._mix_hops, 
@@ -249,6 +257,7 @@ class GCN_Network(object):
                         self.embedding = tf.layers.Dense(self._extra_fc, activation = self._act)(self.embedding)
 
                 label_act = 'softmax' if self._label_unique > 1 else 'sigmoid'
+                print("LABEL ACT", label_act)
                 self.y_pred = tf.layers.Dense(self._label_unique, activation = label_act, name = 'y_pred')(self.embedding)
         
                 outputs = []
@@ -275,11 +284,14 @@ class GCN_Network(object):
                 self.y_true_slice = self.semi_supervised_slice([self.y_true, self.inds])
                      #keras.layers.Lambda(self.semi_supervised_slice)([self.y_true, self.inds])
                 
+                print("*"*500)
+                print(loss_function)
+                print(self.y_true_slice, self.y_pred_slice)
                 self.slice_loss = loss_fun([self.y_true_slice, self.y_pred_slice], function = loss_function, first = self._num_labeled_nodes)
                     #keras.layers.Lambda(loss_fun, arguments = {'function': loss_function, 'first': self._num_labeled_nodes})([self.y_true_slice, self.y_pred_slice])
                 
-                full_loss = assign_scattered([self.slice_loss, self.y_pred, self.inds])
-                     #keras.layers.Lambda(assign_scattered)([self.slice_loss, self.y_pred, self.inds])
+                #full_loss = assign_scattered([self.slice_loss, self.y_pred, self.inds])
+                #keras.layers.Lambda(assign_scattered)([self.slice_loss, self.y_pred, self.inds])
 
 
                 #tf_loss = self.slice_loss #full_loss
@@ -298,19 +310,19 @@ class GCN_Network(object):
         def fit(self, adj, features):
                 # STOPPING AFTER CERTAIN AMOUNT OF TIME?
 
-                
                 tic = time.time()
                 for i in range(self._epochs):
                         # TO DO : anneal learning rate
                         try:
                                 if i > int(self._epochs/2):
-                                        lr = self._lr*(1- (self._epochs - i)/(self._epochs - int(self._epochs/2)))
+                                        lr = self._lr*(1- (i - int(self._epochs/2))*1.0/(self._epochs - int(self._epochs/2)))
                                 else:
                                         lr = self._lr
                         except:
                                 lr = self._lr
                         preds, loss_value = self.step(adj, features, lr)
-                        print("Epoch ", i, " Loss ", np.mean(loss_value))
+                        self.logger.write(str("Epoch "+i+"Loss "+str(np.mean(loss_value))))
+                        #print("Epoch ", i, " Loss ", np.mean(loss_value))
                         if time.time()-tic > 3000:
                                 break
 
@@ -320,23 +332,24 @@ class GCN_Network(object):
                                 tensor = inputs[0]
                                 inds = inputs[-1]
                                 inds = tf.squeeze(inds)
-                                
-                        else:
-                                tensor = inputs
-                                inds = np.arange(first, dtype = np.float32)
-                        try:
-                                sliced = tf.gather(tensor, inds, axis = 0)
-                        except:
-                                sliced = tf.gather(tensor, tf.cast(inds, tf.int32), axis = 0)
+                        #else:
+                        #        tensor = inputs
+                        #        inds = np.arange(first, dtype = np.float32)
+                        #try:
+                        sliced = tf.gather(tensor, inds, axis = 0)
+                        #except:
+                        #        sliced = tf.gather(tensor, tf.cast(inds, tf.int32), axis = 0)
                         #sliced.set_shape([None, sliced.get_shape()[-1]])
-                        #return tf.cast(sliced, tf.float32)
-                        return tf.cast(tf.reshape(sliced, [-1, tf.shape(tensor)[-1]]), tf.float32)
+                        return tf.cast(sliced, tf.float32)
+                        #return tf.cast(tf.reshape(sliced, [-1, tf.shape(tensor)[-1]]), tf.float32)
                         
         def step(self, adj, features, lr=None, columns=None):
             #i = LAST_STEP['step']
             #LAST_STEP['step'] += 1
             #feed_dict[is_training] = True
             #feed_dict[ph_indices] = train_indices
+
+
 
             if not isinstance(adj, list):
                     feed_dict = {self.adj_input: adj,       
@@ -345,17 +358,25 @@ class GCN_Network(object):
                     feed_dict = {self.adj_inds: adj[0],
                                  self.adj_vals: adj[-1],
                                  self.feature_input: features}
-                                 
+
+
                 #y: self.training_outputs
                 #}
             if lr is not None:
               feed_dict[self.learn_rate] = lr
-            
+            #print("FEED ", feed_dict)            
                 # Train step
             #train_preds, loss_value, _ = sess.run((sliced_output, label_loss, train_op), feed_dict)
 
 
-            train_preds, loss_value, _ = self.sess.run((self.y_pred_slice, self.slice_loss, self.train_op), feed_dict)
+            _, train_preds, loss_value, pred, y_true, y_true_slice = self.sess.run((self.train_op, self.y_pred_slice, self.slice_loss, self.y_pred, self.y_true, self.y_true_slice), feed_dict)
+
+            #print("train preds ", train_preds)
+            #print('pred ', pred)
+            #print("true ", y_true)
+
+            #import IPython; IPython.embed()
+
 
             if np.isnan(loss_value).any():
                     print('NaN value reached. Debug please.')
@@ -386,7 +407,7 @@ class GCN_Network(object):
                                         act_k.append(act)
                                         
                         x = tf.concat(act_k, name = 'mix_'+str(mix_hops)+'hops_'+str(h_i), axis = -1) #keras.layers.Concatenate(axis = -1, name = 'mix_'+str(mix_hops)+'hops_'+str(h_i))(act_k)
-                
+            
                 # embedding tensor (concatenation of k)
                 return x
 
@@ -462,11 +483,11 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
         
         # epochs
         epochs = UniformInt(
-                lower = 1,
-                upper = 500,
-                default = 100,
+                lower = 50,
+                upper = 10000,
+                default = 200,
                 #q = 5e-8,                                                                                                                                                                 
-                description = 'number of epochs to train',
+                description = 'number of epochs / gradient steps to train (entire graph each batch)',
                 semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
                 )
 
@@ -632,14 +653,22 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         #self._input = self._make_input_features(nodes_df, tensor = True)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
                         self.sparse = True
 
+                        # should be gone
                         #if self.node_encode is None:
-                        #    self.node_encode = LabelEncoder()
-                        #num_nodes = nodes_df.shape[0], 
+                            #self.node_encode = LabelEncoder()
+                            #num_nodes = nodes_df.shape[0], 
                         _adj = self._make_adjacency(edges_df, sparse = self.sparse) #tensor = True)#, node_subset = node_subset.values.astype(np.int32))
                         
                         # NODE ENCODE
                         print(nodes_df)
-                        nodes_df['nodeID']  = self.node_encode.transform(nodes_df['nodeID'].astype(np.int32).values)
+                        print("VALUES")
+                        print(nodes_df['nodeID'].values)
+                        print("AS INT")
+                        print(nodes_df['nodeID'].astype(np.int32).values)
+                        try:
+                                nodes_df['nodeID']  = self.node_encode.transform(nodes_df['nodeID'].astype(np.int32).values)
+                        except:
+                                pass
                         
                         _input = self._make_input_features(nodes_df, num_nodes = self._num_training_nodes)#, tensor = True)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
 
@@ -658,7 +687,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 return _adj, _input, targets
 
         def _set_training_values(self, learning_df, targets):
+                self.training_inds = learning_df['d3mIndex'].astype(np.int32).values
+                print()
+                print("TRAINING INDS")
+                print(self.training_inds)
                 self.training_inds = self.node_encode.transform(learning_df['d3mIndex'].astype(np.int32).values)
+                print(self.training_inds)
 
                 self._label_unique = np.unique(targets.values).shape[0]
                 #self._label_unique = np.unique(targets).shape[0]
@@ -683,7 +717,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                        print("SETTING ", self.training_inds[i])
                        training_outputs[self.training_inds[i],:]= self.training_outputs[i, :]
                 self.training_outputs = training_outputs
-
+                print("training outputs" )
+                print(training_outputs)
                 self.outputs_tensor = tf.constant(self.training_outputs)
                 self.inds_tensor = tf.constant(np.squeeze(self.training_inds), dtype = tf.int32)
 
@@ -775,11 +810,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                     self.node_encode = LabelEncoder()
                     self.node_encode.fit(to_fit)
                     self._num_training_nodes = self.node_encode.classes_.shape[0]
-                    num_nods = self._num_training_nodes
+                    #self._num_training_nodes = np.unique(to_fit).shape[0]
+                    num_nodes = self._num_training_nodes
                     
                     print("NODES PRE-ENCODE ", to_fit)
                     print('NODES ENCODED ', self.node_encode.transform(to_fit))
-                    print('encoding clases ', self.node_encode.classes_.shape[0])
+                    #print('encoding clases ', self.node_encode.classes_.shape[0])
                 else:
                     pass #self.node_encode.transform(to_fit) #nodes_df[id_col].values)
 
@@ -810,12 +846,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         #adj = tf.SparseTensorValue([[sources.values[i, 0], dests.values[i,0]] for i in range(sources.values.shape[0])], [1.0 for i in range(sources.values.shape[0])], dense_shape = (num_nodes, num_nodes))
                 elif sparse:
                         sparse_inds = [[sources.values[i, 0], dests.values[i,0]] for i in range(sources.values.shape[0])]
-                        sparse_values = [1.0 for i in range(sources.values.shape[0])]
+                        sparse_values = [1.0/np.sum(sources.values == sources.values[i]) for i in range(sources.values.shape[0])]
                 else:
                         adj = csr_matrix(([1.0 for i in range(sources.values.shape[0])], ([sources.values[i, 0] for i in range(sources.values.shape[0])], [dests.values[i,0] for i in range(sources.values.shape[0])])), shape = (num_nodes, num_nodes), dtype = np.float32)
                 #tf.sparse.placeholder(dtype,shape=None,name=None)
 
-
+                
                 return adj if not sparse else [sparse_inds, sparse_values]
                 # PREVIOUS RETURN
                 #self._adj = keras.layers.Input(tensor = adj if tensor else tf.convert_to_tensor(adj), sparse = True)
@@ -847,6 +883,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                         features = get_columns_of_type(nodes_df, semantic_types).values.astype(np.float32)
                         
+                        
                         if tensor:
                                 features = tf.convert_to_tensor(features)
                                 to_return= tf.concat([features, node_id], -1)
@@ -875,7 +912,15 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                                 'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
 
 
-                        features = get_columns_of_type(nodes_df, semantic_types).values.astype(np.float32)
+                        try:
+                                features = get_columns_of_type(nodes_df, semantic_types)
+                        except:
+                                features = nodes_df
+                        features = features[[c for c in features.columns if 'label' not in c and 'nodeID' not in c and 'index' not in c.lower()]]
+                        features = features.values.astype(np.float32)
+
+                        #features = features[:, 1:]
+                        #import IPython; IPython.embed()
                         self._input_columns += features.shape[-1] 
 
 
@@ -938,7 +983,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 self.keras_fit = False
                 self._task = 'classification'
                 self._act = 'relu'
-                self._epochs = 200 if self._num_training_nodes < 10000 else 50
+                self._epochs = self.hyperparams['epochs'] #200 if self._num_training_nodes < 10000 else 50
                 self._units = [self.hyperparams['layer_size']]*self.hyperparams['layers'] 
                 self._mix_hops = self.hyperparams['adjacency_order']
                 self._modes = 1 # TO DO : INFER FROM DATA FOR LINK PREDICTION
@@ -946,7 +991,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         self._lr = self.hyperparams['lr']
                 except:
                         self._lr = 0.01
-                self._optimizer = keras.optimizers.Adam(self._lr)
+                #self._optimizer = keras.optimizers.Adam(self._lr)
                 self._extra_fc = self.hyperparams['layer_size']
                 # self._adj and self._input already set as keras Input tensors
  
@@ -957,8 +1002,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 use_network = True
                 if use_network:
                         self.network = GCN_Network(nodes = self._num_training_nodes, units = self._units, mix_hops = self._mix_hops, 
-                                lr = self._lr, extra_fc = self._extra_fc, modes = self._modes,
-                                outputs_tensor = self.outputs_tensor, inds_tensor = self.inds_tensor,
+                                lr = self._lr, extra_fc = self._extra_fc, modes = self._modes, epochs = self._epochs,
+                                outputs_tensor = self.outputs_tensor, inds_tensor = self.inds_tensor, logger = _logger,
                                 input_columns = self._input_columns, label_unique = self._label_unique, sparse = True)
 
 
