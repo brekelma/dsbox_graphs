@@ -204,10 +204,6 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                       'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
         attrs = get_columns_of_type(edges_df, attr_types)
         
-        print("*"*500)
-        print("SOURCES ", sources)
-        print("DEsts ", dests)
-        print("*"*500)
         sources = self.node_enc.transform(sources.astype(np.int32).values)
         dests = self.node_enc.transform(dests.astype(np.int32).values)
 
@@ -244,15 +240,15 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             try:
                 G = loadGraphFromEdgeDF(edges_df)
             except Exception as e:
-                print()
-                print("***************** LOADING GRAPH FROM EDGE LIST error ************", e)
-                print()
+                pass
+                #print()
+                #print("***************** LOADING GRAPH FROM EDGE LIST error ************", e)
+                #print()
 
         #self.training_data = G
 
         self.node_enc = LabelEncoder()
-        print("")
-        print("NODES DF ", nodes_df)
+
         id_col = [i for i in nodes_df.columns if 'nodeID' in i or ('node' in i and 'id' in i.lower())][0]
 
         try:
@@ -262,9 +258,9 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             node_inds = [i for i in nodes_df['nodeID'].astype(np.int32).values]
             to_drop = np.setdiff1d(node_inds, to_drop)
             nodes_df.drop(to_drop)
-            print("DROPPING ")
-            print(nodes_df)
-            print("DROPPED")
+
+
+
             #nodes_df = nodes_df.loc[[i for i in learning_df['d3mIndex'].astype(np.int32).values]]
             self.node_enc.fit(nodes_df[id_col].astype(np.int32).values)
         
@@ -349,14 +345,12 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
             return CallResult(return_list, True, 1)
         else:
-            print("*"*50)
-            print("RESULT ", result.shape)
             result_df = d3m_DataFrame(result, generate_metadata = True)
             
             result_df = result_df.loc[result_df.index.astype(np.int32).isin(learning_df['d3mIndex'].astype(np.int32).values)]
             result_df.index.name = 'd3mIndex'
             #result_df.reset_index(drop = False, inplace = True)
-            print("Result post-reset ", result_df)
+
             #result_df = learning_df.astype(object).join(result_df.astype(object), on = 'd3mIndex')#, on = 'nodeID')
             
             result_df = d3m_DataFrame(result_df, generate_metadata = True)
@@ -383,8 +377,6 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             try_alt = False
             if try_alt:
             #try:
-                print("TRYING ALTERNATIVE")
-                
                 output = d3m_DataFrame(result[learning_df['d3mIndex'].astype(np.int32),...], index = learning_df['d3mIndex'].astype(np.int32), generate_metadata = True, source = self)
                 output.index = learning_df.index.copy()
                 output.index = output.index.astype(np.int32)
@@ -393,22 +385,15 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                 learning_df.index = learning_df.index.astype(np.int32)
                 self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
                 learning_df['d3mIndex'] = learning_df['d3mIndex'].astype(np.int32)
-                print("Trying combine ")
+
                 output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],                                                                                                                
                                            add_index_columns=True,#self.hyperparams['add_index_columns'],                                                                                                          
                                            inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
-                print("RETURNING ALTERNATIVE", output)
                 #output = output.apply(to_numeric, errors = 'ignore', axis = 1)
                 #print("RETURNING ALTERNATIVE", output)
                 return CallResult(output, True, 1)
-            else:
             #except Exception as e:
-                #print("*"*50)
-                #print("Try ALT failed ", e)
-                #print("*"*50)
-
-                print("Result df (final) ", result_df)
-                print("learning _df ", learning_df)
+            else:
                 return CallResult(result_df, True, 1)
             
 
