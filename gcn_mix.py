@@ -56,11 +56,6 @@ def loss_fun(inputs, function = None, first = None):
                 import importlib
                 mod = importlib.import_module('keras.objectives')
                 function = getattr(mod, function)
-        #try:
-        print("*"*500)
-        print("LOSS FUNCTION ", function)
-        print("inputs ", inputs)
-        print("*"*500)
 
         return function(inputs[0], inputs[-1]) #if function is not None else inputs
         #except:
@@ -257,7 +252,7 @@ class GCN_Network(object):
                         self.embedding = tf.layers.Dense(self._extra_fc, activation = self._act)(self.embedding)
 
                 label_act = 'softmax' if self._label_unique > 1 else 'sigmoid'
-                print("LABEL ACT", label_act)
+
                 self.y_pred = tf.layers.Dense(self._label_unique, activation = label_act, name = 'y_pred')(self.embedding)
         
                 outputs = []
@@ -284,9 +279,7 @@ class GCN_Network(object):
                 self.y_true_slice = self.semi_supervised_slice([self.y_true, self.inds])
                      #keras.layers.Lambda(self.semi_supervised_slice)([self.y_true, self.inds])
                 
-                print("*"*500)
-                print(loss_function)
-                print(self.y_true_slice, self.y_pred_slice)
+                
                 self.slice_loss = loss_fun([self.y_true_slice, self.y_pred_slice], function = loss_function, first = self._num_labeled_nodes)
                     #keras.layers.Lambda(loss_fun, arguments = {'function': loss_function, 'first': self._num_labeled_nodes})([self.y_true_slice, self.y_pred_slice])
                 
@@ -322,7 +315,7 @@ class GCN_Network(object):
                                 lr = self._lr
                         preds, loss_value = self.step(adj, features, lr)
                         self.logger.info(str("Epoch "+str(i)+"Loss "+str(np.mean(loss_value))))
-                        print("Epoch ", i, " Loss ", np.mean(loss_value))
+                        #print("Epoch ", i, " Loss ", np.mean(loss_value))
                         if time.time()-tic > 3000:
                                 break
 
@@ -626,11 +619,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 #self.training_outputs = to_categorical(self.label_encode.fit_transform(outputs), num_classes = np.unique(outputs.values).shape[0])
                 #else:
                 #        raise NotImplementedError()
-                print("Learning df shape ")
-                print(learning_df.shape)
-                print("targets ")
-                print(targets.shape)
-                
                 self._set_training_values(learning_df, targets)
                 
                 self.fitted = False
@@ -660,11 +648,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         _adj = self._make_adjacency(edges_df, sparse = self.sparse) #tensor = True)#, node_subset = node_subset.values.astype(np.int32))
                         
                         # NODE ENCODE
-                        print(nodes_df)
-                        print("VALUES")
-                        print(nodes_df['nodeID'].values)
-                        print("AS INT")
-                        print(nodes_df['nodeID'].astype(np.int32).values)
                         try:
                                 nodes_df['nodeID']  = self.node_encode.transform(nodes_df['nodeID'].astype(np.int32).values)
                         except:
@@ -688,11 +671,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
         def _set_training_values(self, learning_df, targets):
                 self.training_inds = learning_df['d3mIndex'].astype(np.int32).values
-                print()
-                print("TRAINING INDS")
-                print(self.training_inds)
-                self.training_inds = self.node_encode.transform(learning_df['d3mIndex'].astype(np.int32).values)
-                print(self.training_inds)
+                try:
+                        self.training_inds = self.node_encode.transform(learning_df['d3mIndex'].astype(np.int32).values)
+                except:
+                        pass
+
 
                 self._label_unique = np.unique(targets.values).shape[0]
                 #self._label_unique = np.unique(targets).shape[0]
@@ -708,17 +691,13 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 self._num_labeled_nodes = self.training_outputs.shape[0]
                 
                 # OPTION TO NOT FILL IN TO FULL RANK
-                print("*"*50)
-                print(self._num_training_nodes)
-                print('training outputs ', self.training_outputs.shape)
+
                 training_outputs = np.zeros(shape = (self._num_training_nodes, self.training_outputs.shape[-1]))
                 #try:
                 for i in range(self.training_inds.shape[0]):
-                       print("SETTING ", self.training_inds[i])
                        training_outputs[self.training_inds[i],:]= self.training_outputs[i, :]
                 self.training_outputs = training_outputs
-                print("training outputs" )
-                print(training_outputs)
+
                 self.outputs_tensor = tf.constant(self.training_outputs)
                 self.inds_tensor = tf.constant(np.squeeze(self.training_inds), dtype = tf.int32)
 
@@ -815,8 +794,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                             self._num_training_nodes = np.unique(to_fit).shape[0]
                     num_nodes = self._num_training_nodes
                     
-                    print("NODES PRE-ENCODE ", to_fit)
-                    print('NODES ENCODED ', self.node_encode.transform(to_fit))
                     #print('encoding clases ', self.node_encode.classes_.shape[0])
                 else:
                     pass #self.node_encode.transform(to_fit) #nodes_df[id_col].values)
@@ -838,10 +815,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 dests[dests.columns[0]] = self.node_encode.transform(dests.astype(np.int32).values)
 
 
-                print("*"*50)
-                print("sources post transform ", sources)
-                print("dests ", dests)
-                print("*"*50)
                 # accomodate weighted graphs ??
                 if tensor:
                         adj = tf.SparseTensor([[sources.values[i, 0], dests.values[i,0]] for i in range(sources.values.shape[0])], [1.0 for i in range(sources.values.shape[0])], dense_shape = (num_nodes, num_nodes))
@@ -1036,9 +1009,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 self.adj_input = tf.SparseTensor(self.adj_inds, self.adj_vals, dense_shape = (self._num_training_nodes, self._num_training_nodes))
                         else:
                                 self.adj_input = tf.sparse_placeholder(tf.float32, shape = (self._num_training_nodes, self._num_training_nodes))
-                        print()
-                        print("SELF NUM TRAINING NODES ", self._num_training_nodes)
-                        print()
+
 
                         self.feature_input = tf.placeholder(tf.float32, shape = (self._num_training_nodes, self._input_columns)) #tf.sparse_placeholder(tf.float32, shape = (self._num_training_nodes, self._num_training_nodes))
 
@@ -1195,7 +1166,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         for i in range(self._epochs):
                                 # TO DO : anneal learning rate
                                 preds, loss_value = step(self._lr)
-                                print("Epoch ", i, " Loss ", np.mean(loss_value))
+                                #print("Epoch ", i, " Loss ", np.mean(loss_value))
                                 if time.time()-tic > 3000:
                                         break
                         # READY TO DELETE ALL OF THIS

@@ -54,7 +54,7 @@ def make_keras_pickleable():
         with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
             fd.write(state['model_str'])
             fd.flush()
-            model = keras.models.load_model(fd.name)#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': echo_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})
+            model = keras.models.load_model(fd.name, custom_objects = {'weighted_mse_x': weighted_mse_x, 'weighted_mse_y': weighted_mse_y})#, custom_objects = {'tanh64': tanh64, 'log_sigmoid': tf.math.log_sigmoid, 'dim_sum': dim_sum, 'echo_loss': echo_loss, 'tf': tf, 'permute_neighbor_indices': permute_neighbor_indices})
         self.__dict__ = model.__dict__
         
 
@@ -351,7 +351,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         else:
             print("*"*50)
             print("RESULT ", result.shape)
-            result_df = d3m_DataFrame(result, generate_metadata = False)
+            result_df = d3m_DataFrame(result, generate_metadata = True)
             
             result_df = result_df.loc[result_df.index.astype(np.int32).isin(learning_df['d3mIndex'].astype(np.int32).values)]
             result_df.index.name = 'd3mIndex'
@@ -372,17 +372,23 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                  
             # #    # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
                  col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
-            result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
+            #result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
+            #print(learning_df.metadata.pretty_print())
+            #print("*"*50)
+            #print(result_df.metadata.pretty_print())
+            result_df.index = learning_df.index.copy()
+            result_df = utils.append_columns(learning_df, result_df)#, use_right_metadata = False)
 
-            try_alt = True
-            #if try_alt:
-            try:
+
+            try_alt = False
+            if try_alt:
+            #try:
                 print("TRYING ALTERNATIVE")
                 
                 output = d3m_DataFrame(result[learning_df['d3mIndex'].astype(np.int32),...], index = learning_df['d3mIndex'].astype(np.int32), generate_metadata = True, source = self)
                 output.index = learning_df.index.copy()
                 output.index = output.index.astype(np.int32)
-
+                output['d3mIndex']=output['d3mIndex'].astype(np.int32)
 
                 learning_df.index = learning_df.index.astype(np.int32)
                 self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
@@ -390,14 +396,16 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                 print("Trying combine ")
                 output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],                                                                                                                
                                            add_index_columns=True,#self.hyperparams['add_index_columns'],                                                                                                          
-                                           inputs=learning_df.astype(np.int32), columns_list=[output], source=self, column_indices=self._training_indices)
-                print("RETURNING ALTERNATIVE")
-                output = output.apply(to_numeric, errors = 'ignore', axis = 1)
+                                           inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
+                print("RETURNING ALTERNATIVE", output)
+                #output = output.apply(to_numeric, errors = 'ignore', axis = 1)
+                #print("RETURNING ALTERNATIVE", output)
                 return CallResult(output, True, 1)
-            except Exception as e:
-                print("*"*50)
-                print("Try ALT failed ", e)
-                print("*"*50)
+            else:
+            #except Exception as e:
+                #print("*"*50)
+                #print("Try ALT failed ", e)
+                #print("*"*50)
 
                 print("Result df (final) ", result_df)
                 print("learning _df ", learning_df)
