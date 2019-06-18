@@ -191,11 +191,11 @@ class GCN_Layer(keras.layers.Layer):
 
 class GCN_Network(object):
         def __init__(self, nodes = None, units = [100, 100], mix_hops = 2, modes = 1, lr = 0.0005, extra_fc = 100, 
-                        outputs_tensor = None, inds_tensor = None, sparse = True, epochs = 100, logger = None,
+                        outputs = None, inds = None, sparse = True, epochs = 100, logger = None,
                         labeled = None, input_columns = None, label_unique = None):
                 self._num_training_nodes = nodes
-                self.outputs_tensor = outputs_tensor
-                self.inds_tensor =inds_tensor
+                self.outputs = outputs
+                self._inds =inds
                 self.sparse = sparse
 
                 self._num_labeled_nodes = labeled 
@@ -222,8 +222,8 @@ class GCN_Network(object):
                 self._extra_fc = extra_fc
 
 
-                self.y_true = self.outputs_tensor #keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
-                self.inds = self.inds_tensor #keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
+                self.y_true = tf.placeholder(tf.float32, shape = [None, *self.outputs.shape[1:]]) #self.outputs_tensor #keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
+                self.inds = tf.placeholder(tf.int64, shape = [None]) #self.inds_tensor #keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
 
 
                 if self.sparse:
@@ -278,8 +278,18 @@ class GCN_Network(object):
                 # doesn't acutally use total / keep
                 self.y_true_slice = self.semi_supervised_slice([self.y_true, self.inds])
                      #keras.layers.Lambda(self.semi_supervised_slice)([self.y_true, self.inds])
-                
-                
+                print("Y true ", self.y_true)
+                print("Y pred ", self.y_pred)
+                print("y true slice ", self.y_true_slice)
+                print("y pred slice ", self.y_pred_slice)
+                try:
+                    shp = tf.shape(self.y_true)
+                    self.y_true_slice = self.y_true_slice.set_shape(shp)
+                    self.y_pred_slice = self.y_pred_slice.set_shape(shp)
+                except Exception as e:
+                    print("trying but ", e)
+                    self.y_true_slice = tf.reshape(self.y_true_slice, (-1, self.y_true.get_shape().as_list()[-1]))
+                    self.y_pred_slice = tf.reshape(self.y_pred_slice, (-1, self.y_pred.get_shape().as_list()[-1]))
                 self.slice_loss = loss_fun([self.y_true_slice, self.y_pred_slice], function = loss_function, first = self._num_labeled_nodes)
                     #keras.layers.Lambda(loss_fun, arguments = {'function': loss_function, 'first': self._num_labeled_nodes})([self.y_true_slice, self.y_pred_slice])
                 
@@ -352,7 +362,8 @@ class GCN_Network(object):
                                  self.adj_vals: adj[-1],
                                  self.feature_input: features}
 
-
+            feed_dict[self.y_true] = self.outputs
+            feed_dict[self.inds] = self._inds
                 #y: self.training_outputs
                 #}
             if lr is not None:
@@ -404,16 +415,19 @@ class GCN_Network(object):
                 # embedding tensor (concatenation of k)
                 return x
 
-        def pred(self, adj_input, feature_input, embedding = False, _slice = False):
+        def pred(self, adj_input, feature_input, inds = None, embedding = False, _slice = False):
                 if isinstance(adj_input, list):
                         fd = {self.adj_inds: adj_input[0],
                                      self.adj_vals: adj_input[-1],
-                                     self.feature_input: feature_input}
+                                     self.feature_input: feature_input
+                                    }
   
                    
                 else:
                         fd = {self.adj_input: adj_input,       
                               self.feature_input: feature_input}#,
+                if _slice and inds is not None:
+                    fd[self.inds]= inds
                 
                 if not embedding:
                         if not _slice:
@@ -669,6 +683,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 return _adj, _input, targets
 
+
         def _set_training_values(self, learning_df, targets):
                 self.training_inds = learning_df['d3mIndex'].astype(np.int32).values
                 try:
@@ -679,11 +694,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 self._label_unique = np.unique(targets.values).shape[0]
                 #self._label_unique = np.unique(targets).shape[0]
-                try:
-                    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
-                except:
-                    self.label_encode = LabelEncoder()
-                    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
+                self.training_outputs = to_categorical(targets.values, num_classes = np.unique(targets.values).shape[0])
+                #try:
+                #    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
+                #except:
+                #    self.label_encode = LabelEncoder()
+                #    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
                 
                 #self.training_outputs = to_categorical(self.label_encode.fit_transform(targets), num_classes = np.unique(targets).shape[0])
                 
@@ -977,7 +993,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 if use_network:
                         self.network = GCN_Network(nodes = self._num_training_nodes, units = self._units, mix_hops = self._mix_hops, 
                                 lr = self._lr, extra_fc = self._extra_fc, modes = self._modes, epochs = self._epochs,
-                                outputs_tensor = self.outputs_tensor, inds_tensor = self.inds_tensor, logger = _logger,
+                                outputs = self.training_outputs, inds = self.training_inds, logger = _logger,
                                 input_columns = self._input_columns, label_unique = self._label_unique, sparse = True)
 
 
@@ -1231,8 +1247,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         _adj, _input, targets = self._get_training_data(learning_df, nodes_df, edges_df)
                         # sets inds, target tensors
                         self._set_training_values(learning_df, targets)
-
-
+                        
                         #print("PRODUCE ", learning_df)
                         #print("NODES ", nodes_df)
 
@@ -1248,16 +1263,22 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         #result = self.model.predict([_adj.todense(), _input.todense()], steps = 1)
 
                         else:
-                                result = self.network.pred(_adj, _input, embedding = False, _slice = True)
+                                print("ADJ ", _adj)
+                                print("INPUT ", _input)
+                                print("training inds ", self.training_inds)
+                                result = self.network.pred(_adj, _input, inds = self.training_inds, embedding = False, _slice = True)
                                 #result = self._pred(_adj, _input, embedding = False, _slice = True)
                                 
                         result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
 
-                        if self.label_encode is not None:
-                                try:
-                                        result = self.label_encode.inverse_transform(result)
-                                except:
-                                        pass
+                        try:
+                                if self.label_encode is not None:
+                                        try:
+                                                result = self.label_encode.inverse_transform(result)
+                                        except:
+                                                pass
+                        except:
+                                pass
         
                         # line graph produce doesn't have to give a single prediction! can return softmax               
                         if self.hyperparams['return_embedding']:
@@ -1274,7 +1295,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                                 
                                         embed = embed[self.training_inds]
                                 else:
-                                        embed = self.network.pred(_adj, _input, embedding = True, _slice = True)
+                                        embed = self.network.pred(_adj, _input, inds = self.training_inds, embedding = True, _slice = True)
                                 
                                 try:
                                         result = np.concatenate([result, embed], axis = -1)
@@ -1303,6 +1324,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 if not self.hyperparams['return_embedding']:
                         output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True, source = self)
                 else:
+                        print("*"*100)
+                        print('result ', result.shape)
+                        print("*"*100)
+                        print('learning df ', learning_df)
+                        print("*"*100)
                         output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True, source = self)                     
                         
                 #output.index.name = 'd3mIndex'
