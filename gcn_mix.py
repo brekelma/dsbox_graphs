@@ -696,7 +696,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 #self._label_unique = np.unique(targets).shape[0]
                 #self.training_outputs = to_categorical(targets.values, num_classes = np.unique(targets.values).shape[0])
                 try:
-                    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
+                    self.training_outputs = to_categorical(self.label_encode.transform(targets.values), num_classes = np.unique(targets.values).shape[0])
                 except:
                     self.label_encode = LabelEncoder()
                     self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
