@@ -694,12 +694,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 self._label_unique = np.unique(targets.values).shape[0]
                 #self._label_unique = np.unique(targets).shape[0]
-                self.training_outputs = to_categorical(targets.values, num_classes = np.unique(targets.values).shape[0])
-                #try:
-                #    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
-                #except:
-                #    self.label_encode = LabelEncoder()
-                #    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
+                #self.training_outputs = to_categorical(targets.values, num_classes = np.unique(targets.values).shape[0])
+                try:
+                    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
+                except:
+                    self.label_encode = LabelEncoder()
+                    self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
                 
                 #self.training_outputs = to_categorical(self.label_encode.fit_transform(targets), num_classes = np.unique(targets).shape[0])
                 
@@ -1272,7 +1272,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
 
                         try:
-                                if self.label_encode is not None:
+                                if self.label_encode is not None and not self.hyperparams['return_embedding']:
                                         try:
                                                 result = self.label_encode.inverse_transform(result)
                                         except:
