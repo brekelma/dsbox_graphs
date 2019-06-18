@@ -278,16 +278,11 @@ class GCN_Network(object):
                 # doesn't acutally use total / keep
                 self.y_true_slice = self.semi_supervised_slice([self.y_true, self.inds])
                      #keras.layers.Lambda(self.semi_supervised_slice)([self.y_true, self.inds])
-                print("Y true ", self.y_true)
-                print("Y pred ", self.y_pred)
-                print("y true slice ", self.y_true_slice)
-                print("y pred slice ", self.y_pred_slice)
                 try:
                     shp = tf.shape(self.y_true)
                     self.y_true_slice = self.y_true_slice.set_shape(shp)
                     self.y_pred_slice = self.y_pred_slice.set_shape(shp)
                 except Exception as e:
-                    print("trying but ", e)
                     self.y_true_slice = tf.reshape(self.y_true_slice, (-1, self.y_true.get_shape().as_list()[-1]))
                     self.y_pred_slice = tf.reshape(self.y_pred_slice, (-1, self.y_pred.get_shape().as_list()[-1]))
                 self.slice_loss = loss_fun([self.y_true_slice, self.y_pred_slice], function = loss_function, first = self._num_labeled_nodes)
@@ -1232,7 +1227,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         nodes_df = inputs[1]
                         edges_df = inputs[-1]
                 else:
-                        print("********** GCN INPUTS ***********", inputs)
+                        #print("********** GCN INPUTS ***********", inputs)
                         raise ValueError("Check inputs to GCN")
 
                 return learning_df, nodes_df, edges_df
@@ -1263,9 +1258,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         #result = self.model.predict([_adj.todense(), _input.todense()], steps = 1)
 
                         else:
-                                print("ADJ ", _adj)
-                                print("INPUT ", _input)
-                                print("training inds ", self.training_inds)
                                 result = self.network.pred(_adj, _input, inds = self.training_inds, embedding = False, _slice = True)
                                 #result = self._pred(_adj, _input, embedding = False, _slice = True)
                                 
@@ -1324,11 +1316,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 if not self.hyperparams['return_embedding']:
                         output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True, source = self)
                 else:
-                        print("*"*100)
-                        print('result ', result.shape)
-                        print("*"*100)
-                        print('learning df ', learning_df)
-                        print("*"*100)
                         output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True, source = self)                     
                         
                 #output.index.name = 'd3mIndex'
