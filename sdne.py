@@ -110,8 +110,8 @@ class SDNE_Params(params.Params):
 class SDNE_Hyperparams(hyperparams.Hyperparams):
     dimension = UniformInt(
         lower = 10,
-        upper = 200,
-        default = 10,
+        upper = 400,
+        default = 50,
         #q = 5,
         description = 'dimension of latent embedding',
         semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
@@ -126,7 +126,7 @@ class SDNE_Hyperparams(hyperparams.Hyperparams):
     )
     beta = UniformInt( 
         lower = 1,
-        upper = 20,
+        upper = 65,
         default = 5,
         #q = 1,
         description = 'seen edge reconstruction weight (to account for sparsity in links for reconstructing adjacency.  matrix B in Wang et al 2016',
@@ -142,10 +142,10 @@ class SDNE_Hyperparams(hyperparams.Hyperparams):
         )
     lr = Uniform(
         lower = 1e-5,
-        upper = 1e-2,
+        upper = 1e0,
         default = 5e-4,
-        #q = 5e-8,                                                                                                                                                                                               
-        description = 'learning rate (constant across training)',
+        #q = 5e-8,                                                                 
+        description = 'learning rate (for sgd, with decay and momentum',
         semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
         )
     return_list = UniformBool(
