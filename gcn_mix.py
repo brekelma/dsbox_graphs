@@ -123,13 +123,11 @@ def get_columns_of_type(df, semantic_types):
                 #cls.logger.warning("Node attributes skipping columns: %(columns)s", {
                 #        'columns': columns_not_to_use,
                 #})
-        print("*"*400)
-        print(columns_to_use)
-        print("*"*400)
-        #try:
-        #        ret = df.select_columns(columns_to_use)
-        #except:
-        ret = df.select_columns([i for i in range(len(df.columns)) if 'attr' in df.columns[i].lower()])
+
+        try:
+                ret = df.select_columns(columns_to_use)
+        except:
+                ret = df.select_columns([i for i in range(len(df.columns)) if 'attr' in df.columns[i].lower()])
             #try:
             #except:
             #    ret = df.select_columns(columns_to_use)[:-2]
@@ -649,11 +647,31 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                             #num_nodes = nodes_df.shape[0], 
                         _adj = self._make_adjacency(edges_df, sparse = self.sparse) #tensor = True)#, node_subset = node_subset.values.astype(np.int32))
                         
+                        if np.amin(nodes_df['nodeID'].astype(np.int32).values) == self.min_node - 1:
+                                try:
+                                        print("MAX node ", self.max_node)
+                                        if nodes_df.shape[0] > self.max_node:
+                                                max_ind = max(nodes_df.index.values)
+                                                nodes_df.drop(max_ind)
+                                                nodes_df['nodeID'] = nodes_df['nodeID'].astype(np.int32) + 1
+                                                if np.amin(learning_df['d3mIndex'].astype(np.int32).values) == self.min_node - 1:
+                                                        learning_df['nodeID'] = learning_df['nodeID'].astype(np.int32) + 1
+
+                                except Exception as e:
+                                        print("*"*500)
+                                        print("drop column exception ", e)
+                                        print("*"*50)
+                                print("LEANRING ", learning_df)
+                                print("nodes ", nodes_df)
+                                
+                                #learning_df['nodeID'] = learning_df['nodeID'].astype(np.int32)+1
+                                
                         # NODE ENCODE
                         try:
                                 nodes_df['nodeID']  = self.node_encode.transform(nodes_df['nodeID'].astype(np.int32).values)
                         except:
                                 pass
+                        
                         
                         _input = self._make_input_features(nodes_df, num_nodes = self._num_training_nodes)#, tensor = True)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
 
@@ -787,6 +805,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         d = list(dests.columns)[-1]
                         sources.append({s: i}, ignore_index = True)
                         dests.append({d: i}, ignore_index = True)
+                        
+                self.min_node = min(np.amin(sources[sources.columns[0]].astype(np.int32).values), np.amin(dests[dests.columns[0]].astype(np.int32).values))
+                self.max_node = max(np.amax(sources[sources.columns[0]].astype(np.int32).values), np.amax(dests[dests.columns[0]].astype(np.int32).values))
 
                 if self.node_encode is None:
                     self.node_encode = LabelEncoder()
@@ -889,14 +910,16 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
                                                 'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
 
-
+  #                      print(nodes_df.metadata.pretty_print())
                         try:
                                 features = get_columns_of_type(nodes_df, semantic_types)
                         except:
                                 features = nodes_df
                         features = features[[c for c in features.columns if 'label' not in c and 'nodeID' not in c and 'index' not in c.lower()]]
                         features = features.values.astype(np.float32)
+
                         print("*"*20)
+                        print("PRINTING FEATURES ")
                         print(features)
                         print("*"*20)
                         #features = features[:, 1:]
