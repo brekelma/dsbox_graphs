@@ -625,7 +625,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 
                 self.fitted = False
 
-        def _get_training_data(self, learning_df, nodes_df, edges_df, node_subset = None):
+        def _get_training_data(self, learning_df, nodes_df, edges_df, node_subset = None, produce = False):
                 if self.hyperparams['line_graph']:
                         self._num_training_nodes = edges_df.values.shape[0]
                         _adj = self._make_line_adj(edges_df)
@@ -647,7 +647,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         #if self.node_encode is None:
                             #self.node_encode = LabelEncoder()
                             #num_nodes = nodes_df.shape[0], 
-                        _adj = self._make_adjacency(edges_df, sparse = self.sparse) #tensor = True)#, node_subset = node_subset.values.astype(np.int32))
+                        if not produce:
+                                _adj = self._make_adjacency(edges_df, sparse = self.sparse) #tensor = True)#, node_subset = node_subset.values.astype(np.int32))
                         
                         # NODE ENCODE
                         try:
@@ -1239,7 +1240,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                         # embed ALL (even unlabelled examples)
                         learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
-                        _adj, _input, targets = self._get_training_data(learning_df, nodes_df, edges_df)
+                        _adj, _input, targets = self._get_training_data(learning_df, nodes_df, edges_df, produce = True)
                         # sets inds, target tensors
                         self._set_training_values(learning_df, targets)
                         
