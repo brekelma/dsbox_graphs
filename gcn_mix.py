@@ -650,10 +650,15 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         if np.amin(nodes_df['nodeID'].astype(np.int32).values) == self.min_node - 1:
                                 try:
                                         print("MAX node ", self.max_node)
+                                        nodes_df['nodeID'] = nodes_df['nodeID'].astype(np.int32) + 1
                                         if nodes_df.shape[0] > self.max_node:
                                                 max_ind = max(nodes_df.index.values)
-                                                nodes_df.drop(max_ind)
-                                        nodes_df['nodeID'] = nodes_df['nodeID'].astype(np.int32) + 1
+                                                import IPython; IPython.embed()
+                                                try:
+                                                        nodes_df.drop(max_ind+1)
+                                                except:
+                                                        nodes_df.drop(max_ind)
+
                                         nodes_df.drop(0)
                                         if np.amin(learning_df['d3mIndex'].astype(np.int32).values) == self.min_node - 1:
                                                 learning_df['nodeID'] = learning_df['nodeID'].astype(np.int32) + 1
