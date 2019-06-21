@@ -123,10 +123,13 @@ def get_columns_of_type(df, semantic_types):
                 #cls.logger.warning("Node attributes skipping columns: %(columns)s", {
                 #        'columns': columns_not_to_use,
                 #})
-        try:
-                ret = df.select_columns(columns_to_use)
-        except:
-                ret = df.select_columns([i for i in range(len(df.columns)) if 'attr' in df.columns[i].lower()])
+        print("*"*400)
+        print(columns_to_use)
+        print("*"*400)
+        #try:
+        #        ret = df.select_columns(columns_to_use)
+        #except:
+        ret = df.select_columns([i for i in range(len(df.columns)) if 'attr' in df.columns[i].lower()])
             #try:
             #except:
             #    ret = df.select_columns(columns_to_use)[:-2]
@@ -893,7 +896,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 features = nodes_df
                         features = features[[c for c in features.columns if 'label' not in c and 'nodeID' not in c and 'index' not in c.lower()]]
                         features = features.values.astype(np.float32)
-
+                        print("*"*20)
+                        print(features)
+                        print("*"*20)
                         #features = features[:, 1:]
                         #import IPython; IPython.embed()
                         self._input_columns += features.shape[-1] 
@@ -909,7 +914,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 else:
                         to_return = node_id
                         
-                        
+                print()
+                print("*"*500)
+                print("INPUT FEATURES")
+                print(to_return[:, -2:])
+                print("*"*500)
+
                 if tensor:
                         return to_return #tf.contrib.layers.dense_to_sparse(to_return)
                 else:
