@@ -441,7 +441,6 @@ class GCN_Params(params.Params):
 
         ''' 
         Attributes necessary to resume training or run on test data (if loaded from pickle)
-
         Code specifications of parameters: 
                 https://gitlab.com/datadrivendiscovery/d3m/blob/devel/d3m/metadata/params.py
         '''
@@ -464,17 +463,9 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
         Code specifications of hyperparameters: 
                 https://gitlab.com/datadrivendiscovery/d3m/blob/devel/d3m/metadata/hyperparams.py
         '''
-
-        dimension = UniformInt(
-                lower = 10,
-                upper = 200,
-                default = 100,
-                description = 'dimension of latent embedding',
-                semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
-                )
         adjacency_order = UniformInt(
                 lower = 1,
-                upper = 5,
+                upper = 7,
                 default = 3,
                 #q = 5e-8,
                 description = 'Power of adjacency matrix to consider.  1 recovers Vanilla GCN.  MixHop (Abu El-Haija et al 2019) performs convolutions on A^k for 0 <= k <= order and concatenates them into a representation, allowing the model to consider k-step connections.',
@@ -485,7 +476,7 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
         
         # epochs
         epochs = UniformInt(
-                lower = 50,
+                lower = 10,
                 upper = 10000,
                 default = 200,
                 #q = 5e-8,                                                                                                                                                                 
@@ -521,7 +512,7 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
         lr = Uniform(
                 lower = .0001,
                 upper = 1,
-                default = .01,
+                default = .001,
                 description = 'learning rate',
                 semantic_types=["http://schema.org/Float", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
                 )
@@ -578,7 +569,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
         """
         See base classes here : 
                 https://gitlab.com/datadrivendiscovery/d3m/tree/devel/d3m/primitive_interfaces
-
         """
 
         metadata = PrimitiveMetadata({
@@ -600,7 +590,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 # See possible types here :https://gitlab.com/datadrivendiscovery/d3m/blob/devel/d3m/metadata/schemas/v0/definitions.json
                 "algorithm_types": ["CONVOLUTIONAL_NEURAL_NETWORK"],
                 "primitive_family": "FEATURE_CONSTRUCTION",
-                "hyperparams_to_tune": ["dimension", "adjacency_order"]
+                "hyperparams_to_tune": ["layers", "layer_size", "adjacency_order", "epochs", "lr"]
         })
         
         def __init__(self, *, hyperparams : GCN_Hyperparams) -> None:
@@ -977,7 +967,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 except:
                         self._lr = 0.01
                 #self._optimizer = keras.optimizers.Adam(self._lr)
-                self._extra_fc = self.hyperparams['layer_size']
+                self._extra_fc = None #self.hyperparams['layer_size']
                 # self._adj and self._input already set as keras Input tensors
  
 
@@ -1425,5 +1415,3 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 # embedding tensor (concatenation of k)
                 return x
 
-
-         
