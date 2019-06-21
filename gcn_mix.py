@@ -653,9 +653,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         if nodes_df.shape[0] > self.max_node:
                                                 max_ind = max(nodes_df.index.values)
                                                 nodes_df.drop(max_ind)
-                                                nodes_df['nodeID'] = nodes_df['nodeID'].astype(np.int32) + 1
-                                                if np.amin(learning_df['d3mIndex'].astype(np.int32).values) == self.min_node - 1:
-                                                        learning_df['nodeID'] = learning_df['nodeID'].astype(np.int32) + 1
+                                        nodes_df['nodeID'] = nodes_df['nodeID'].astype(np.int32) + 1
+                                        nodes_df.drop(0)
+                                        if np.amin(learning_df['d3mIndex'].astype(np.int32).values) == self.min_node - 1:
+                                                learning_df['nodeID'] = learning_df['nodeID'].astype(np.int32) + 1
 
                                 except Exception as e:
                                         print("*"*500)
@@ -672,7 +673,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         except:
                                 pass
                         
-                        
+                        print("NODES DF ", nodes_df)
+                        print("NUm training nodes ", self._num_training_nodes)
                         _input = self._make_input_features(nodes_df, num_nodes = self._num_training_nodes)#, tensor = True)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
 
                 # dealing with outputs
@@ -920,7 +922,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                         print("*"*20)
                         print("PRINTING FEATURES ")
-                        print(features)
+                        print(features.shape)
+                        print("NODES ", node_id.shape)
                         print("*"*20)
                         #features = features[:, 1:]
                         #import IPython; IPython.embed()
