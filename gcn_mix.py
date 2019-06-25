@@ -123,9 +123,7 @@ def get_columns_of_type(df, semantic_types):
                 #cls.logger.warning("Node attributes skipping columns: %(columns)s", {
                 #        'columns': columns_not_to_use,
                 #})
-        print("*"*400)
-        print(columns_to_use)
-        print("*"*400)
+        
         try:
                 ret = df.select_columns(columns_to_use)
         except:
@@ -675,10 +673,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
         def _set_training_values(self, learning_df, targets):
                 self.training_inds = learning_df['d3mIndex'].astype(np.int32).values
-                try:
-                        self.training_inds = self.node_encode.transform(learning_df['d3mIndex'].astype(np.int32).values)
-                except:
-                        pass
+                
+                if not np.all(learning_df['d3mIndex'].astype(np.int32).values == nodes_df['nodeID'].astype(np.int32).values):
+                        try:
+                                self.training_inds = self.node_encode.transform(learning_df['d3mIndex'].astype(np.int32).values)
+                        except:
+                                pass
 
 
                 self._label_unique = np.unique(targets.values).shape[0]
@@ -876,7 +876,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
         def _make_input_features(self, nodes_df, tensor = False, num_nodes = None):# tensor = True):
                 num_nodes = num_nodes if num_nodes is not None else nodes_df.shape[0]
-
+                #print("NODES DF ", nodes_df)
                 if tensor:
                         node_id = tf.cast(tf.eye(num_nodes), dtype = tf.float32)
                         #node_id = tf.sparse.eye(nodes_df.shape[0])
@@ -897,14 +897,14 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 features = nodes_df
                         features = features[[c for c in features.columns if 'label' not in c and 'nodeID' not in c and 'index' not in c.lower()]]
                         features = features.values.astype(np.float32)
-                        #print("*"*20)
-                        #print(features)
-                        #print("*"*20)
+                        #print('nodes ', node_id.shape)
                         #features = features[:, 1:]
-                        #import IPython; IPython.embed()
+                        
                         self._input_columns += features.shape[-1] 
-
-
+                        #print("Input columns ", self._input_columns)
+                        #print("np.concatenate([node_id, features], axis = -1)")
+                        #import IPython; IPython.embed()
+                        
                         if tensor:
                                 features = tf.convert_to_tensor(features)
                                 #features = tf.contrib.layers.dense_to_sparse(tf.convert_to_tensor(features))
