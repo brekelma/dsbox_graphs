@@ -674,11 +674,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
         def _set_training_values(self, learning_df, targets):
                 self.training_inds = learning_df['d3mIndex'].astype(np.int32).values
                 
-                if not np.all(learning_df['d3mIndex'].astype(np.int32).values == nodes_df['nodeID'].astype(np.int32).values):
-                        try:
-                                self.training_inds = self.node_encode.transform(learning_df['d3mIndex'].astype(np.int32).values)
-                        except:
-                                pass
+                #if not np.all(learning_df['d3mIndex'].astype(np.int32).values == nodes_df['nodeID'].astype(np.int32).values):
+                try:
+                        self.training_inds = self.node_encode.transform(learning_df['d3mIndex'].astype(np.int32).values)
+                except:
+                        pass
 
 
                 self._label_unique = np.unique(targets.values).shape[0]
@@ -897,21 +897,27 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 features = nodes_df
                         features = features[[c for c in features.columns if 'label' not in c and 'nodeID' not in c and 'index' not in c.lower()]]
                         features = features.values.astype(np.float32)
-                        #print('nodes ', node_id.shape)
-                        #features = features[:, 1:]
+
                         
-                        self._input_columns += features.shape[-1] 
-                        #print("Input columns ", self._input_columns)
-                        #print("np.concatenate([node_id, features], axis = -1)")
-                        #import IPython; IPython.embed()
-                        
+                        self._input_columns += features.shape[-1]                                 
                         if tensor:
                                 features = tf.convert_to_tensor(features)
                                 #features = tf.contrib.layers.dense_to_sparse(tf.convert_to_tensor(features))
                                 to_return= tf.concat([node_id, features], -1)
                         else:
-                                to_return=np.concatenate([node_id, features], axis = -1)
-                        
+                                try:
+                                        to_return= np.concatenate([node_id, features], axis = -1)
+                                except:
+                                        if nodes_df.shape[0] > node_id.shape[0]:
+                                                nodes_df.drop(np.amax(nodes_df.index.astype(np.int32).values), inplace = True)
+                                        try:
+                                                features = get_columns_of_type(nodes_df, semantic_types)
+                                        except:
+                                                features = nodes_df
+                                        features = features[[c for c in features.columns if 'label' not in c and 'nodeID' not in c and 'index' not in c.lower()]]
+                                        features = features.values.astype(np.float32)                                        
+                                        to_return= np.concatenate([node_id, features], axis = -1)
+
                 else:
                         to_return = node_id
                         
