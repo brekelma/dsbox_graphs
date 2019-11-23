@@ -1,4 +1,4 @@
-Bfrom setuptools import setup, find_packages
+from setuptools import setup, find_packages
 
 try:
     long_description = open("README.rst").read()
@@ -20,7 +20,7 @@ setup(
     long_description=long_description,
     include_package_data = True,
     classifiers=[
- 1;95;0c       "Programming Language :: Python",
+        "Programming Language :: Python",
         "Programming Language :: Python :: 3.5",
     ], 
     entry_points = {

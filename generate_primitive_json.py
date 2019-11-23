@@ -20,10 +20,11 @@ arguments = parser.parse_args()
 PREFIX = 'd3m.primitives.'
 PRIMITIVES = [(p, config) for p in [
         'feature_construction.sdne.DSBOX',
-        'data_transformation.graph_to_edge_list.DSBOX',
+        #'data_transformation.graph_to_edge_list.DSBOX',
         'feature_construction.gcn_mixhop.DSBOX'
 ]
 ]
+arguments.dirname = arguments.dirname if arguments.dirname is not None else 'primitives'
 
 for p, config in PRIMITIVES:
     print('Generating json for primitive ' + p)
