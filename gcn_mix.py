@@ -39,7 +39,7 @@ import _config as cfg_
 #import config as cfg_
 
 
-Input = typing.Union[container.List, container.DataFrame]
+Input = container.Dataset #typing.Union[container.List, container.DataFrame]
 Output = container.DataFrame
                                  
                                         
@@ -108,36 +108,35 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
                 semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter']
         )
 
-# all primitives must be pickle-able, and this should do the trick for Keras models
 
-def loss_fun(inputs, function = None, first = None):
-        if isinstance(function, str):
-                import importlib
-                mod = importlib.import_module('keras.objectives')
-                function = getattr(mod, function)
-        try:
-                return function(inputs[0], inputs[-1]) if function is not None else inputs
-        except:
-                inputs[0] = tf.gather(inputs[0], np.arange(first))
-                return function(inputs[0], inputs[-1]) if function is not None else inputs
-
+# def loss_fun(inputs, function = None, first = None):
+#         if isinstance(function, str):
+#                 import importlib
+#                 mod = importlib.import_module('keras.objectives')
+#                 function = getattr(mod, function)
+#         try:
+#                 return function(inputs[0], inputs[-1]) if function is not None else inputs
+#         except:
+#                 inputs[0] = tf.gather(inputs[0], np.arange(first))
+#                 return function(inputs[0], inputs[-1]) if function is not None else inputs
 
 
-def dummy_concat(inputs, total = None, keep = None):
-        tensor = inputs[0]
-        shape_ref = inputs[-1]
-        dummy = tf.zeros_like(shape_ref)[:(tf.shape(shape_ref)[0] - tf.shape(tensor)[0])]
 
-        try:
-                return tf.concat([tensor, dummy], axis = 0, name = 'dummy_concat')
-        except:
-                return tf.concat([tf.expand_dims(tensor,-1), dummy], axis = 0, name = 'dummy_concat')
+# def dummy_concat(inputs, total = None, keep = None):
+#         tensor = inputs[0]
+#         shape_ref = inputs[-1]
+#         dummy = tf.zeros_like(shape_ref)[:(tf.shape(shape_ref)[0] - tf.shape(tensor)[0])]
+
+#         try:
+#                 return tf.concat([tensor, dummy], axis = 0, name = 'dummy_concat')
+#         except:
+#                 return tf.concat([tf.expand_dims(tensor,-1), dummy], axis = 0, name = 'dummy_concat')
 
 def assign_scattered(inputs):
         slice_loss = inputs[0]
         shape_ref = inputs[1]
         inds = tf.expand_dims(tf.cast(inputs[-1], tf.int32), -1)
-        full_loss = tf.scatter_nd(inds, slice_loss, shape = [tf.shape(shape_ref)[0]])
+        full_loss = tf.scatter_nd(inds, slice_loss, shape = [tf.shape(input=shape_ref)[0]])
         return full_loss #tf.reshape(full_loss, (-1,))
 
 def identity(x_true, x_pred):
@@ -147,15 +146,15 @@ def dot(x, y, sparse=False):
         """Wrapper for tf.matmul (sparse vs dense)."""
         if sparse:
                 try:
-                        res = tf.sparse_tensor_dense_matmul(x, y)
+                        res = tf.sparse.sparse_dense_matmul(x, y)
                 except:
                         x = tf.contrib.layers.dense_to_sparse(x)
-                        res = tf.sparse_tensor_dense_matmul(x, y)
+                        res = tf.sparse.sparse_dense_matmul(x, y)
         else:
                 res = tf.matmul(x, y)
         return res
 
-def sparse_exp_ax(adj, x, exponent = 1):
+def sparse_exponentiate(adj, x, exponent = 1):
         res = x
         if exponent == 0:
                 return res
@@ -184,6 +183,55 @@ def get_columns_of_type(df, semantic_types):
                 #})
 
         return df.select_columns(columns_to_use)
+
+def _update_metadata(metadata: mbase.DataMetadata, resource_id: mbase.SelectorSegment) -> mbase.DataMetadata:
+                resource_metadata = dict(metadata.query((resource_id,)))
+
+                if 'structural_type' not in resource_metadata or not issubclass(resource_metadata['structural_type'], container.DataFrame):
+                        raise TypeError("The Dataset resource is not a DataFrame, but \"{type}\".".format(
+                                type=resource_metadata.get('structural_type', None),
+                        ))
+
+                resource_metadata.update(
+                        {
+                                'schema': mbase.CONTAINER_SCHEMA_VERSION,
+                        },
+                )
+
+                new_metadata = mbase.DataMetadata(resource_metadata)
+
+                new_metadata = metadata.copy_to(new_metadata, (resource_id,))
+
+                # Resource is not anymore an entry point.
+                new_metadata = new_metadata.remove_semantic_type((), 'https://metadata.datadrivendiscovery.org/types/DatasetEntryPoint')
+
+                return new_metadata
+                
+def get_resource(inputs, resource_name):
+        _id, _df = base_utils.get_tabular_resource(inputs, resource_name)
+        _df.metadata = _update_metadata(inputs.metadata, _id)
+        return _id, _df
+
+def get_columns_of_type(df, semantic_types): 
+                columns = df.metadata.list_columns_with_semantic_types(semantic_types)
+
+                def can_use_column(column_index: int) -> bool:
+                                return column_index in columns
+
+                # hyperparams['use_columns'], hyperparams['exclude_columns']
+                columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) # metadata, include, exclude_columns, idx_function
+
+                if not columns_to_use:
+                                raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(
+                                                semantic_types=semantic_types,
+                                ))
+
+                #if columns_not_to_use: #and hyperparams['use_columns']
+                                #cls.logger.warning("Node attributes skipping columns: %(columns)s", {
+                                #        'columns': columns_not_to_use,
+                                #})
+
+                return df.select_columns(columns_to_use)
 
 class Slice(keras.layers.Layer):
         def __init__(self, **kwargs):
@@ -224,7 +272,7 @@ class GCN_Layer(keras.layers.Layer):
                 #else:
                 #        x = inputs
                 
-                return sparse_exp_ax(self.adj, x, exponent = self.k)
+                return sparse_exponentiate(self.adj, x, exponent = self.k)
                 
         def compute_output_shape(self, input_shape):
                 shape = input_shape if not isinstance(input_shape, list) else input_shape[0]
@@ -325,33 +373,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
 
                 if self.hyperparams['line_graph']:
-                        # try:
-                        #         #idx = edges_df['d3mIndex']
-                        #         my_edges = edges_df.join(learning_df, on ='d3mIndex', how='inner')
-                        #         #edges_df = edges_df.loc[learning_df['d3mIndex'].astype(np.int32)] #
-                        # except Exception as e:
-                        #         print()
-                        #         print("*"*500)
-                        #         print("edges indexing error ", e)
-                        #         print("*"*500)
-                        #         try:
-                        #                edges_df = edges_df.astype(object)
-                        #                #pdb.set_trace()
-                        #                my_edges = pd.merge(edges_df.assign(x=edges_df.source.astype(int)), 
-                        #                                    learning_df.assign(x=learning_df.source_nodeID.astype(int)), 
-                        #                                    how = 'right', 
-                        #                                    left_on = ['source'],#, 'target'],
-                        #                                    right_on = ['source_nodeID'])#, 'target_nodeID'])
-                        #                print()
-                        #                print(my_edges)
-                        #                print()
-                        #                my_edges.set_index('d3mIndex')
-                        #         except Exception as e:
-                        #                 print()
-                        #                 print("MERGING EXCEPTION ", e)
-                        #                 print()
-                        # print(my_edges)
-                        #edges_df = my_edges
                         self._num_training_nodes = edges_df.values.shape[0]
                         self._adj = self._make_line_adj(edges_df)
                         self._input = self._make_line_inputs(edges_df)
@@ -550,7 +571,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         features = get_columns_of_type(nodes_df, semantic_types).values.astype(np.float32)
                         
                         if tensor:
-                                features = tf.convert_to_tensor(features)
+                                features = tf.convert_to_tensor(value=features)
                                 to_return= tf.concat([features, node_id], -1)
                         else:
                                 to_return=np.concatenate([features, node_id], axis = -1)
@@ -580,7 +601,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         self._input_columns += features.shape[-1]
 
                         if tensor:
-                                features = tf.convert_to_tensor(features)
+                                features = tf.convert_to_tensor(value=features)
                                 to_return= tf.concat([features, node_id], -1)
                         else:
                                 to_return=np.concatenate([features, node_id], axis = -1)
@@ -666,7 +687,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 sliced = tf.gather(tensor, tf.cast(inds, tf.int32), axis = 0)
                         #sliced.set_shape([None, sliced.get_shape()[-1]])
                         #return tf.cast(sliced, tf.float32)
-                        return tf.cast(tf.reshape(sliced, [-1, tf.shape(tensor)[-1]]), tf.float32)
+                        return tf.cast(tf.reshape(sliced, [-1, tf.shape(input=tensor)[-1]]), tf.float32)
 
                 # def semi_supervised_slice(tensor, inds):
                 #         sliced = tf.gather(tensor, inds, axis = 0)
@@ -756,19 +777,40 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 return CallResult(None, True, 1)
         
         def _parse_inputs(self, inputs : Input):
-                if len(inputs) == 3:
-                        learning_df = inputs[0]
-                        nodes_df = inputs[1]
-                        edges_df = inputs[-1]
-                elif len(inputs) == 2:
-                        learning_df = None
-                        nodes_df = inputs[1]
-                        edges_df = inputs[-1]
-                else:
-                        print("********** GCN INPUTS ***********", inputs)
-                        raise ValueError("Check inputs to GCN")
+                # Input is a dataset now
+                try:
+                        learning_id, learning_df = get_resource(inputs, 'learningData')
+                except Exception as e:
+                        print(e)
+                try: # resource id, resource
+                        nodes_id, nodes_df = get_resource(inputs, '0_nodes')
+                except:
+                        try:
+                                nodes_id, nodes_df = get_resource(inputs, 'nodes')
+                        except:
+                                nodes_df = learning_df
+                try:
+                        edges_id, edges_df = get_resource(inputs, '0_edges')
+                except:
+                        try:
+                                edges_id, edges_df = get_resource(inputs, 'edges')
+                        except:
+                                edges_id, edges_df = get_resource(inputs, '1')
 
                 return learning_df, nodes_df, edges_df
+                # if len(inputs) == 3:
+                #         learning_df = inputs[0]
+                #         nodes_df = inputs[1]
+                #         edges_df = inputs[-1]
+                # elif len(inputs) == 2:
+                #         learning_df = None
+                #         nodes_df = inputs[1]
+                #         edges_df = inputs[-1]
+                # else:
+                #         print("********** GCN INPUTS ***********", inputs)
+                #         raise ValueError("Check inputs to GCN")
+
+                # return learning_df, nodes_df, edges_df
 
                                                  
         def produce(self, *, inputs : Input, outputs : Output, timeout : float = None, iterations : int = None) -> CallResult[Output]:
@@ -917,11 +959,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
         def _get_ph(self):
                 # num supports?  
                 num_supports = 1
-                self._adj = [keras.layers.Input(tensor = tf.sparse_placeholder(tf.float32), name = 'support_'+str(i)) for i in range(num_supports)]
+                self._adj = [keras.layers.Input(tensor = tf.compat.v1.sparse_placeholder(tf.float32), name = 'support_'+str(i)) for i in range(num_supports)]
                 #self._adj = self._adj[0] if len(self._adj) == 0 else self._adj
 
                 # input:  vector of features/ convolved with Identity on nodes
-                self._input = tf.sparse_placeholder(tf.float32) #, shape=tf.constant(features[2], dtype=tf.int64)) # why is this integer?
+                self._input = tf.compat.v1.sparse_placeholder(tf.float32) #, shape=tf.constant(features[2], dtype=tf.int64)) # why is this integer?
 
                 return self._adj
         #     placeholders = {
