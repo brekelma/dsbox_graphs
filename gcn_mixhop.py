@@ -906,8 +906,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 									result = np.concatenate([result, embed], axis = -1)
 							except:
 									result = np.concatenate([np.expand_dims(result, 1), embed], axis = -1)
-							import IPython	
-							IPython.embed()
+							#import IPython	
+							#IPython.embed()
 
 
 			else:
@@ -928,13 +928,14 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
 			if not self.hyperparams['return_embedding']:
 					output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True, source = self)
+					output.index = learning_df.index.copy()
 			else:
 					print("LEARNING DF ", learning_df['d3mIndex'])
 					print("RESULT ", result.shape)
 					output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True, source = self)                     
 					
 			#output.index.name = 'd3mIndex'
-			output.index = learning_df.index.copy()
+			
 			outputs = output
 			
 			self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]

@@ -377,27 +377,9 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             self._sdne.learn_embedding(graph = produce_data)
             self._model = self._sdne._model
             result = self._sdne._Y
-        
-
-
-
-        self.fitted = False
-        if len(inputs) == 3:
-            # network x list remnant
-            #graph = inputs[0]
-            learning_df = inputs[0]
-            nodes_df = inputs[1]
-            edges_df = inputs[-1]
-        elif len(inputs) == 2:
-            nodes_df = inputs[0]
-            edges_df = inputs[-1]
-        else:
-            raise ValueError("INPUTS to SDNE should be length 2 or 3 (?) ", len(inputs))
-
-
-            
-            #result = self._model.learn_embedding(self.training_data)
-            #result = result[0]
+                    
+        #result = self._model.learn_embedding(self.training_data)
+        #result = result[0]
         
         if self.hyperparams['return_list']:
             result_np = container.ndarray(result, generate_metadata = True)
@@ -408,8 +390,11 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             
             result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
             result_df.index.name = 'd3mIndex'
+
+
+
             #result_df.reset_index(drop = False, inplace = True)
-            print("Result post-reset ", result_df)
+            #print("Result post-reset ", result_df)
             #result_df = learning_df.astype(object).join(result_df.astype(object), on = 'd3mIndex')#, on = 'nodeID')
         
             # for column_index in range(result_df.shape[1]):
