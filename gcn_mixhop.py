@@ -4,8 +4,9 @@ import typing
 import numpy as np
 import pdb
 
-import tensorflow as tf
-import keras
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+import tensorflow.keras as keras
 import pandas as pd
 import copy 
 import importlib

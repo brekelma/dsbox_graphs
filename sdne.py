@@ -4,7 +4,8 @@ import typing
 import networkx
 import numpy as np
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 #from GEM.gem.embedding import node2vec
 from GEM.gem.embedding import sdne
 #from GEM.gem.embedding import sdne_utils
