@@ -62,18 +62,12 @@ def dot(x, y, sparse=False):
 					#x = tf.contrib.layers.dense_to_sparse(x)
 					#res = tf.sparse_tensor_dense_matmul(x, y)
 		else:
-				res = K.dot(x,y) #tf.matmul(x, y)
+				res = tf.matmul(x, y) #K.dot(x,y) 
 		return res
 
 def sparse_exponentiate(inputs, exponent = 1, sparse = False):
 	adj = inputs[0]
 	x = inputs[1]
-	print("")
-	print("*"*50)
-	print("ADJ ", adj)
-	print("X ", x)
-	print("*"*50)
-	print()
 	res = x
 	if exponent == 0:
 			return res
@@ -83,7 +77,7 @@ def sparse_exponentiate(inputs, exponent = 1, sparse = False):
 	return res
 
 def identity(x_true, x_pred):
-        return x_pred
+		return x_pred
 
 # selects only those 
 def semi_supervised_slice(inputs, first = None):
@@ -356,13 +350,15 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 				node_subset = None
 
 
+			
+			#if self.node_encode is None:
 			self.node_encode = LabelEncoder()
 			
 			sources, dests = self._get_source_dest(edges_df)
 			sources = sources.astype(np.int32)
 			dests = dests.astype(np.int32)
 			to_fit = np.sort(np.concatenate([sources.values,dests.values], axis = -1).astype(np.int32).ravel())
-			
+
 
 			#to_fit = node_subset if node_subset is not None else np.concatenate([sources.values,dests.values], axis = -1).ravel()
 			self.node_encode.fit(to_fit) #nodes_df[id_col].values)
@@ -370,9 +366,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 			sources[sources.columns[0]] = self.node_encode.transform(sources.values.astype(np.int32))
 			dests[dests.columns[0]] = self.node_encode.transform(dests.values.astype(np.int32))
 			# node subset = df with index
-
-
-			print("EDGES SHPAE ", edges_df)
 
 			#id_col = [i for i in nodes_df.columns if 'node' in i and 'id' in i.lower()][0]
 			
@@ -384,7 +377,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 				# ****** TO DO ******** : node subset?
 				self._num_training_nodes = nodes_df.values.shape[0]	
 				# csr matrix (or SparseTensor with tensor=True arg)
-				self.full_adj = self._make_adjacency(sources,dests)
+				self.full_adj = self._make_adjacency(sources,dests)  
 				# self.full_adj = self._make_adjacency(sources,dests, num_nodes = nodes_df.shape[0], 
 				# 					node_subset = node_subset_enc)#.values.astype(np.int32))
 				self._input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
@@ -686,9 +679,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 			# Feel free to fill in less important hyperparameters or example architectures here
 			# ******************************************
 			self._task = 'classification'
-			self._act = 'tanh'
+			self._act = 'relu'
 			self._epochs = 200 if self._num_training_nodes < 10000 else 50
-			self._units = [10, 10, 10]
+			self._units = [100, 100, 100]
 			self._mix_hops = self.hyperparams['adjacency_order']
 			self._modes = 1
 			self._lr = self.hyperparams['lr']
@@ -798,9 +791,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 			#IPython.embed()
 			#print(self._adj.todense().shape)
 			try:
-				self._adj = self._adj.todense() if not self.hyperparams['sparse'] else self._adj
-			except:
+				self._adj = self._adj.todense() if (not self.hyperparams['sparse'] and not isinstance(_adj,np.ndarray)) else self._adj
+			except Exception as e:
 				pass
+			#	print("TO DENSE Except ", e)
+			#	import IPython
+			#	IPython.embed()
 			#try:
 			self.model.fit(x = [self._adj, self._input], #[self._adj],#, self._input], # already specified as tensors
 						   y = [self.training_outputs],# + [np.squeeze(self.training_outputs)],                               
@@ -836,7 +832,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 						node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
 					else:
 						node_subset = None
-
+					
 					# node_encode.transform(produce_data), take that adj matrix slice, normalize
 					if not self.hyperparams['line_graph']:
 							try:
@@ -847,8 +843,20 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 							_input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
 
 							# PRODUCE CAN WORK ON ONLY SUBSAMPLED Adjacency matrix (already created)
-							node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32))
-							_adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
+							
+
+
+							#node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32))
+							#sources[sources.columns[0]] = self.node_encode.transform(sources.values.astype(np.int32))
+							#dests[dests.columns[0]] = self.node_encode.transform(dests.values.astype(np.int32))
+							try:
+								node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32))
+								_adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
+							except:
+								node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32)+1)
+								#_adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
+								#IPython.embed()
+								_adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
 					else:
 						# REDO LINE_GRAPH
 						self._num_training_nodes = edges_df.values.shape[0]
@@ -857,36 +865,23 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 						raise NotImplementedError()     
 
 
-					
-
 
 					target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
 							'https://metadata.datadrivendiscovery.org/types/TrueTarget')
 				
 					targets =  get_columns_of_type(learning_df, target_types)
-					
-					self._parse_data(learning_df, targets, node_subset = node_subset)
 
-
-					#try:
-					#        output_pred = self.model.layers[-1].output # all layer outputs
-					#        func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output_pred])
-					#        
-					 #       result = func([adj, inp, 1.])[0]
-					#except: # could be preferable, but both prediction methods should work
 					try:
-							#_adj = _adj.todense()
-							result = self.pred_model.predict([_adj.todense(), _input], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
+						self._parse_data(learning_df, targets, node_subset = node_subset)
+						_adj = _adj.todense() if (not self.hyperparams['sparse'] and not isinstance(_adj,np.ndarray)) else _adj
+						result = self.pred_model.predict([_adj, _input], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
 					except Exception as e:
-							print(type(self.training_inds), self.training_inds.shape, np.squeeze(self.training_inds).shape)
-							print("list ", np.array(list(np.squeeze(self.training_inds))).shape)
-							print('INDS TENSOR ', self.inds)
-							#result = self.pred_model.predict([np.squeeze(self.training_inds), _adj.todense(), _input.todense()], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
-							result = self.pred_model.predict([_adj.todense(), _input.todense(),np.squeeze(self.training_inds)[:]], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
-							#self._adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0]) #, node_subset = node_subset.values.astype(np.int32))
-							#self._input = self._make_input_features(nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)])
-							#result = self.model.predict([_adj.todense(), _input.todense()], steps = 1)
-
+						pass
+						#self._parse_data(learning_df, targets, node_subset = node_subset)
+						#self.node_encode.transform(node_subset.values.astype(np.int32)+1)
+						#_adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
+						#_adj = _adj.todense() if (not self.hyperparams['sparse'] and not isinstance(_adj,np.ndarray)) else _adj
+						#result = self.pred_model.predict([_adj, _input], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
 
 					
 					result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
@@ -898,9 +893,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 							#         embed = func([adj, inp, 1.])[0]
 							# except:
 							try:
-									embed = self.embedding_model.predict([_adj.todense(), _input], steps = 1)
+									embed = self.embedding_model.predict([_adj, _input], steps = 1)
 							except:
-									embed = self.embedding_model.predict([self.training_inds, _adj.todense(), _input], steps = 1)
+									embed = self.embedding_model.predict([_adj, _input, self.training_inds], steps = 1)
 									
 							embed = embed[self.training_inds]
 							try:

@@ -297,8 +297,8 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         
         self.node_encode = LabelEncoder()
         sources, dests = self._get_source_dest(edges_df)
-        sources = sources.astype(np.int32)[:100]
-        dests = dests.astype(np.int32)[:100]
+        sources = sources.astype(np.int32)
+        dests = dests.astype(np.int32)
         to_fit = np.sort(np.concatenate([sources.values,dests.values], axis = -1).astype(np.int32).ravel())
         
         self.node_encode.fit(to_fit) #nodes_df[id_col].values)
@@ -354,7 +354,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         #self._model.learn_embedding(graph = self.training_data)
         self._sdne.learn_embedding(graph = self.training_data)
         self._model = self._sdne._model
-        print("MODEL ", self._model.summary())
+
         make_keras_pickleable()
         self.fitted = True
         return CallResult(None, True, 1)
@@ -362,6 +362,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
 						 
     def produce(self, *, inputs : Input, timeout : float = None, iterations : int = None) -> CallResult[Output]:
         #make_keras_pickleable()
+        produce_data, learning_df, nodes_df, edges_df = self._parse_inputs(inputs, return_all = True)
         if self.fitted:
             result = self._sdne._Y #produce( )#_Y
         else:
@@ -373,11 +374,12 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                                 alpha = alpha,
                                 beta = beta,
                                 **args)
-            produce_data, learning_df, nodes_df, edges_df = self._parse_inputs(inputs, return_all = True)
+
             produce_data = networkx.from_scipy_sparse_matrix(produce_data)
             self._sdne.learn_embedding(graph = produce_data)
             self._model = self._sdne._model
             result = self._sdne._Y
+
                     
         #result = self._model.learn_embedding(self.training_data)
         #result = result[0]
@@ -387,13 +389,37 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
             return CallResult(return_list, True, 1)
         else:
-            result_df = d3m_DataFrame(result, generate_metadata = False)
             
+            # output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True, source = self)                     
+            # outputs = output
+            training_indices = [c for c in learning_df.columns if isinstance(c, str) and not 'index' in c.lower()]
+            # 
+
+            result_df = d3m_DataFrame(result, generate_metadata = False)
             result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
+            result_df.index = learning_df.index.copy()
+         
+            #just took out
+            #result_df = d3m_DataFrame(result_df, generate_metadata = True)
+            #output = d3m_DataFrame(result_df, generate_metadata = True, source = self) #index = learning_df['d3mIndex'], 
+            #output.index = learning_df.index.copy()
+
+
+            _id,_df = get_resource(inputs, 'learningData')
+            result_df.metadata = _update_metadata(inputs.metadata, _id)
             result_df.index.name = 'd3mIndex'
-
-
-
+            #
+            
+            result_df = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
+                        add_index_columns=True,#self.hyperparams['add_index_columns'], 
+                        inputs=learning_df, columns_list=[learning_df]+[result_df], source=self, column_indices= training_indices)
+            result_df = result_df.loc[:,~result_df.columns.duplicated()]
+            #
+            result_df = result_df.fillna(0)
+            try:
+                result_df = result_df.drop('d3mIndex')
+            except:
+                pass
             #result_df.reset_index(drop = False, inplace = True)
             #print("Result post-reset ", result_df)
             #result_df = learning_df.astype(object).join(result_df.astype(object), on = 'd3mIndex')#, on = 'nodeID')
@@ -409,12 +435,12 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             #     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
             #     result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
             
+  
+            
+            #print("Result df (final) ", result_df)
+            #print("learning _df ", learning_df)
+            
 
-            result_df = d3m_DataFrame(result_df, generate_metadata = True)
-            print("Result df (final) ", result_df)
-            print("learning _df ", learning_df)
-            #output = d3m_DataFrame(result_df, generate_metadata = True, source = self) #index = learning_df['d3mIndex'], 
-            #output.index = learning_df.index.copy()
             
             #print('finished output ')
             #self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
