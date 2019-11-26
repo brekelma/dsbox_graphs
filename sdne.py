@@ -390,100 +390,22 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             return CallResult(return_list, True, 1)
         else:
             
-            # output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True, source = self)                     
-            # outputs = output
-            training_indices = [c for c in learning_df.columns if isinstance(c, str) and not 'index' in c.lower()]
-            # 
+            learn_df = d3m_DataFrame(learning_df, generate_metadata = True)
+            result_df = d3m_DataFrame(result, generate_metadata = True)
+            result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)] 
 
-            result_df = d3m_DataFrame(result, generate_metadata = False)
-            result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)]
-            result_df.index = learning_df.index.copy()
-         
-            #just took out
-            #result_df = d3m_DataFrame(result_df, generate_metadata = True)
-            #output = d3m_DataFrame(result_df, generate_metadata = True, source = self) #index = learning_df['d3mIndex'], 
-            #output.index = learning_df.index.copy()
+            for column_index in range(result_df.shape[1]):
+                col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
+                col_dict['structural_type'] = type(1.0)
+                # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
+                col_dict['name'] = str(learn_df.shape[1] + column_index) #should just be column index, no corex prefix #'corex_' + 
+                col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
 
-
-            _id,_df = get_resource(inputs, 'learningData')
-            result_df.metadata = _update_metadata(inputs.metadata, _id)
-            result_df.index.name = 'd3mIndex'
-            #
+                result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
+            result_df.index = learn_df.index.copy()
             
-            result_df = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
-                        add_index_columns=True,#self.hyperparams['add_index_columns'], 
-                        inputs=learning_df, columns_list=[learning_df]+[result_df], source=self, column_indices= training_indices)
-            result_df = result_df.loc[:,~result_df.columns.duplicated()]
-            #
-            result_df = result_df.fillna(0)
-            try:
-                result_df = result_df.drop('d3mIndex')
-            except:
-                pass
-            #result_df.reset_index(drop = False, inplace = True)
-            #print("Result post-reset ", result_df)
-            #result_df = learning_df.astype(object).join(result_df.astype(object), on = 'd3mIndex')#, on = 'nodeID')
-        
-            # for column_index in range(result_df.shape[1]):
-            #     col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
-            #     #if column_index == 0:
-            #     #    col_dict['name'] = 'nodeID'
-            #     #else:
-            #     col_dict['name'] = 'sdne_' + str(learning_df.shape[1] + column_index)
-            #     col_dict['structural_type'] = type(1.0)
-            # #    # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
-            #     col_dict['semantic_types'] = ('https://metadata.datadrivendiscovery.org/type/Attribute')#, 'http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/TabularColumn')
-            #     result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS,), col_dict)
-            
-  
-            
-            #print("Result df (final) ", result_df)
-            #print("learning _df ", learning_df)
-            
-
-            
-            #print('finished output ')
-            #self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
-
-            #output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
-            #                               add_index_columns=True,#self.hyperparams['add_index_columns'], 
-            #                               inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
-            #print('SDNE OUTPUT ', output)
-            #final_df = result_df
-            #final_df.set_index('d3mIndex')
-            #return CallResult(final_df, True, 1)
-            return CallResult(result_df, True, 1)
-            #return CallResult(output, True, 1)
-
-            #append_cols = result_df.loc[learning_df.index]
-            #print('APPENDING COLS ', append_cols.shape)
-            #print(append_cols.columns)
-            #print(append_cols)
-            #final_df =  utils.append_columns(learning_df, append_cols)
-            #print('FINAL DF ', final_df.shape)
-            #print(final_df)
-            #result_df.index = [learning_df.index[learning_df[nodeid]==result_df.values[i,0]] for i in range(result_df.values.shape[0])]
-            ##result_df.index = learning_df.index.copy()
-            #learning_df = utils.append_columns(learning_df, result_df)
-            
-            # going to return one dataframe (node or edge depending on task)
-            
-            # add column for node ID ?
-            #nodeIDs = inputs[1]
-            #result_df['nodeID'] = nodeIDs
-            #col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
-            #col_dict['structural_type'] = type(1.0)
-            # FIXME: assume we apply corex only once per template, otherwise column names might duplicate                                                            
-            #col_dict['name'] = 'corex_' + str(out_df.shape[1] + column_index)
-            #col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
-
-            #corex_df.metadata = corex_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
-            
-            
-        
-        #inputs[0] = result_np
-        
-        # TO DO : continue_fit, timeout
+            output = utils.append_columns(learn_df, result_df)
+            return CallResult(output, True, 1)
         
     
     def multi_produce(self, *, produce_methods: typing.Sequence[str], inputs: Input, timeout: float = None, iterations: int = None) -> MultiCallResult:
