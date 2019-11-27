@@ -20,12 +20,11 @@ setup(
     long_description=long_description,
     include_package_data = True,
     classifiers=[
-        "Programming Language :: Python",
-        "Programming Language :: Python :: 3.5",
+        "Programming Language :: Python"
     ], 
     entry_points = {
     'd3m.primitives': [
-        'feature_construction.sdne.DSBOX = sdne:SDNE',
+        'feature_construction.sdne.DSBOX = sdne:SDNE'
         'feature_construction.gcn_mixhop.DSBOX = gcn_mixhop:GCN'
         #'data_transformation.graph_to_edge_list.DSBOX = graph_dataset_to_list:GraphDatasetToList',
         #'feature_construction.graph_transformer.SDNE = sdne:SDNE',
