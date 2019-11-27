@@ -255,8 +255,21 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
 				#q = 5e-8,
 				description = 'Power of adjacency matrix to consider.  1 recovers Vanilla GCN.  MixHop (Abu El-Haija et al 2019) performs convolutions on A^k for 0 <= k <= order and concatenates them into a representation, allowing the model to consider k-step connections.',
 				semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
+                )
+                depth = UniformInt(
+				lower = 10,
+				upper = 200,
+				default = 100,
+				description = 'ignored if np.array(units).shape > 1 (i.e. layers x adjacency orders: [[10, 5, 5], [10, 5, 5]] = 2 layers of 10 for adj order 1, 5 for adj orders 2 and 3)',
+				semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
 				)
-		
+                hidden_units = UniformInt(
+				lower = 10,
+				upper = 200,
+				default = 100,
+				description = 'Specified as a 1-d list/array specifies size per adj order at each layer, with same number of units for each adjacency order. 2d should be: layers x adjacency orders: [[10, 5, 5], [10, 5, 5]] = 2 layers of 10 for adj order 1, 5 for adj orders 2 and 3)',
+				semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
+				)		
 		# hidden_layers = List( UniformInt )
 		
 		# epochs
@@ -280,6 +293,11 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
 		batch_norm = UniformBool(
 				default = True,
 				description='use batch normalization',
+				semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter']
+		)
+		use_features = UniformBool(
+				default = False,
+				description='use feature',
 				semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter']
 		)
 		
@@ -320,7 +338,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 				"name": "Mixhop GCN",
 				"description": "Graph convolutional neural networks (GCN) as in Kipf & Welling 2016, generalized to k-hop edge links via Abu-el-Haija et al 2019: https://arxiv.org/abs/1905.00067 (GCN recovered for k = 1).  In particular, learns weight transformation of feature matrix X for various powers of adjacency matrix, i.e. nonlinearity(A^k X W), and concatenates into an embedding layer.  Feature input X may be of the form: identity matrix (node_id) w/ node features appended as columns.  Specify order using 'adjacency_order' hyperparam.  Expects list of [learning_df, edges_df, edges_df] as input (e.g. by running common_primitives.normalize_graphs + data_tranformation.graph_to_edge_list.DSBOX)",
 				"python_path": "d3m.primitives.feature_construction.gcn_mixhop.DSBOX",
-				"original_python_path": "gcn_mix.GCN",
+				"original_python_path": "gcn_mixhop.GCN",
 				"source": {
 						"name": "ISI",
 						"contact": "mailto:brekelma@usc.edu",
@@ -380,11 +398,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 				self.full_adj = self._make_adjacency(sources,dests)  
 				# self.full_adj = self._make_adjacency(sources,dests, num_nodes = nodes_df.shape[0], 
 				# 					node_subset = node_subset_enc)#.values.astype(np.int32))
-				self._input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
+				self._input = self._make_input_features(nodes_df, just_adj = not self.hyperparams['use_features'])#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
 
 				self._adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
 
-				#self._normalize_adjacency()
+				self._adj = self._normalize_adjacency(self._adj)
 
 			target_types = ('https://metadata.datadrivendiscovery.org/types/TrueTarget',
 					'https://metadata.datadrivendiscovery.org/types/SuggestedTarget')
@@ -493,8 +511,14 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 		def _normalize_adjacency(self, adj = None, node_subset = None):
 			if adj is None:
 				adj = self._adj
-			row_sum = np.sqrt(adj.sum(axis=-1).A.ravel())
-			col_sum = np.sqrt(adj.sum(axis=0).A.ravel())
+
+			try:
+				row_sum = np.sqrt(adj.sum(axis=-1).A.ravel())
+				col_sum = np.sqrt(adj.sum(axis=0).A.ravel())
+			except:
+				row_sum = np.sqrt(np.sum(adj,axis=-1).ravel())
+				col_sum = np.sqrt(np.sum(adj,axis=0).ravel())
+
 			rows = scipy.sparse.diags(np.where(np.isinf(1/row_sum), np.zeros_like(row_sum), 1/row_sum)) 
 			cols = scipy.sparse.diags(np.where(np.isinf(1/col_sum), np.zeros_like(col_sum), 1/col_sum))
 
@@ -607,10 +631,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 			return adj
 
 
-		def _make_input_features(self, nodes_df, tensor = False, num_nodes = None, incl_adj = True):# tensor = True):
+		def _make_input_features(self, nodes_df, tensor = False, num_nodes = None, incl_adj = True, just_adj = False):# tensor = True):
 			num_nodes = num_nodes if num_nodes is not None else nodes_df.shape[0]
 
-			if incl_adj:
+			if incl_adj or just_adj:
 				if tensor:
 						node_id = tf.cast(tf.eye(num_nodes), dtype = tf.float32)
 						#node_id = tf.sparse.eye(nodes_df.shape[0])
@@ -619,22 +643,24 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 						node_id = np.eye(num_nodes)
 
 			self._input_columns = num_nodes if incl_adj else 0
+                        to_return = node_id
 			# preprocess features, e.g. if non-numeric / text?
-			if len(nodes_df.columns) > 2:
-					semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
+                        if not just_adj:
+                                        if len(nodes_df.columns) > 2:
+                                                        semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
 									  'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
-
-					features = get_columns_of_type(nodes_df, semantic_types).values.astype(np.float32)
-					self._input_columns += features.shape[-1]
-
-					if tensor:
-							features = tf.convert_to_tensor(value=features)
-							to_return= tf.concat([features, node_id], -1) if incl_adj else features
-					else:
-							to_return= np.concatenate([features, node_id], axis = -1) if incl_adj else features
-					
-			else:
-					to_return = node_id
+                                                        
+                                                        features = get_columns_of_type(nodes_df, semantic_types).values.astype(np.float32)
+                                                        self._input_columns += features.shape[-1]
+                                                        
+                                                        if tensor:
+                                                                        features = tf.convert_to_tensor(value=features)
+                                                                        to_return= tf.concat([features, node_id], -1) if incl_adj else features
+                                                        else:
+                                                                        to_return= np.concatenate([features, node_id], axis = -1) if incl_adj else features
+                                                                        
+                                        else:
+                                                        to_return = node_id
 
 			return to_return
 			# *** WHY SPARSE ? *** 
@@ -840,7 +866,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 							except:
 									self._num_training_nodes = nodes_df.values.shape[0]
 							#_adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-							_input = self._make_input_features(nodes_df)#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
+							_input = self._make_input_features(nodes_df, just_adj = not self.hyperparams['use_features'])#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
 
 							# PRODUCE CAN WORK ON ONLY SUBSAMPLED Adjacency matrix (already created)
 							
@@ -857,6 +883,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 								#_adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
 								#IPython.embed()
 								_adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
+							_adj = self._normalize_adjacency(_adj)
 					else:
 						# REDO LINE_GRAPH
 						self._num_training_nodes = edges_df.values.shape[0]
