@@ -30,8 +30,8 @@ from d3m.metadata.hyperparams import Uniform, UniformBool, UniformInt, Union, En
 from d3m.primitive_interfaces.base import CallResult, MultiCallResult
 from d3m.primitive_interfaces.unsupervised_learning import UnsupervisedLearnerPrimitiveBase
 
-import _config as cfg_
-#import config as cfg_
+#import _config as cfg_
+import config as cfg_
 
 #CUDA_VISIBLE_DEVICES=""
 
