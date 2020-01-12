@@ -355,10 +355,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 				- check if have all features? (e.g. learning_df.shape[0] == sources+dests.unique)
 				*******************************************
 			'''
-			if self.hyperparams['node_subset']:
-				node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-			else:
-				node_subset = None
+			#if self.hyperparams['node_subset']:
+			#	node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+			#else:
+			#	node_subset = None
 			node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
 		
 			self.node_encode = LabelEncoder()
