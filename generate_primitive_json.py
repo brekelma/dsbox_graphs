@@ -9,7 +9,7 @@ import config
 # from dsbox_dev_setup import path_setup
 # path_setup()
 
-import dsbox
+#import dsbox
 
 parser = argparse.ArgumentParser(
     description='Generate primitive.json descriptions')

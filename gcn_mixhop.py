@@ -45,25 +45,25 @@ Output = container.DataFrame
 
 
 def dot(x, y, sparse=False):
-		"""Wrapper for tf.matmul (sparse vs dense)."""
-		if sparse:
-			print()
-			print("X * Y ", x, y)
-			print()
+	"""Wrapper for tf.matmul (sparse vs dense)."""
+	if sparse:
+		print()
+		print("X * Y ", x, y)
+		print()
+		try:
+			#res = tf.sparse.sparse_dense_matmul(x, y)
+			res = tf.sparse.sparse_dense_matmul(x, y) 
+		except Exception as e:
+			#IPython.embed()
 			try:
-				#res = tf.sparse.sparse_dense_matmul(x, y)
-				res = tf.sparse.sparse_dense_matmul(x, y) 
-			except Exception as e:
-				#IPython.embed()
-				try:
-					res = tf.matmul(x, y, a_is_sparse = True)
-				except:
-					res = tf.matmul(x, y)
-					#x = tf.contrib.layers.dense_to_sparse(x)
-					#res = tf.sparse_tensor_dense_matmul(x, y)
-		else:
-				res = tf.matmul(x, y) #K.dot(x,y) 
-		return res
+				res = tf.matmul(x, y, a_is_sparse = True)
+			except:
+				res = tf.matmul(x, y)
+				#x = tf.contrib.layers.dense_to_sparse(x)
+				#res = tf.sparse_tensor_dense_matmul(x, y)
+	else:
+			res = tf.matmul(x, y) #K.dot(x,y) 
+	return res
 
 def sparse_exponentiate(inputs, exponent = 1, sparse = False):
 	adj = inputs[0]
@@ -81,34 +81,34 @@ def identity(x_true, x_pred):
 
 # selects only those 
 def semi_supervised_slice(inputs, first = None):
-				# input as [tensor, indices_to_select]
-				if isinstance(inputs, list):
-						tensor = inputs[0]
-						inds = inputs[-1]
-						inds = tf.squeeze(inds)
-						
-				else:
-						tensor = inputs
-						inds = np.arange(first, dtype = np.float32)
-				try:
-						sliced = tf.gather(tensor, inds, axis = 0)
-				except:
-						sliced = tf.gather(tensor, tf.cast(inds, tf.int32), axis = 0)
-				#sliced.set_shape([None, sliced.get_shape()[-1]])
-				#return tf.cast(sliced, tf.float32)
-				return tf.cast(tf.reshape(sliced, [-1, tf.shape(input=tensor)[-1]]), tf.float32)
+	# input as [tensor, indices_to_select]
+	if isinstance(inputs, list):
+			tensor = inputs[0]
+			inds = inputs[-1]
+			inds = tf.squeeze(inds)
+			
+	else:
+			tensor = inputs
+			inds = np.arange(first, dtype = np.float32)
+	try:
+			sliced = tf.gather(tensor, inds, axis = 0)
+	except:
+			sliced = tf.gather(tensor, tf.cast(inds, tf.int32), axis = 0)
+	#sliced.set_shape([None, sliced.get_shape()[-1]])
+	#return tf.cast(sliced, tf.float32)
+	return tf.cast(tf.reshape(sliced, [-1, tf.shape(input=tensor)[-1]]), tf.float32)
 
 def assign_scattered(inputs):
-		# "Undo" slice.  Used on loss function to give calculated loss for supervised examples, else 0 
-		# inputs = [loss_on_slices, shape_ref, indices]
-		slice_loss = inputs[0]
-		shape_ref = inputs[1]
-		# e.g. loss goes in batch dim 0,2,4,6,8, inds.shape = (5,1)
-		inds = tf.expand_dims(tf.cast(inputs[-1], tf.int32), -1)
-		full_loss = tf.scatter_nd(inds, 
-						slice_loss, 
-						shape = [tf.shape(input=shape_ref)[0]])
-		return full_loss #tf.reshape(full_loss, (-1,))
+	# "Undo" slice.  Used on loss function to give calculated loss for supervised examples, else 0 
+	# inputs = [loss_on_slices, shape_ref, indices]
+	slice_loss = inputs[0]
+	shape_ref = inputs[1]
+	# e.g. loss goes in batch dim 0,2,4,6,8, inds.shape = (5,1)
+	inds = tf.expand_dims(tf.cast(inputs[-1], tf.int32), -1)
+	full_loss = tf.scatter_nd(inds, 
+					slice_loss, 
+					shape = [tf.shape(input=shape_ref)[0]])
+	return full_loss #tf.reshape(full_loss, (-1,))
 
 
 def import_loss(inputs, function = None, first = None):
@@ -126,27 +126,27 @@ def import_loss(inputs, function = None, first = None):
 
 
 def _update_metadata(metadata: mbase.DataMetadata, resource_id: mbase.SelectorSegment) -> mbase.DataMetadata:
-		resource_metadata = dict(metadata.query((resource_id,)))
+	resource_metadata = dict(metadata.query((resource_id,)))
 
-		if 'structural_type' not in resource_metadata or not issubclass(resource_metadata['structural_type'], container.DataFrame):
-			raise TypeError("The Dataset resource is not a DataFrame, but \"{type}\".".format(
-				type=resource_metadata.get('structural_type', None),
-			))
+	if 'structural_type' not in resource_metadata or not issubclass(resource_metadata['structural_type'], container.DataFrame):
+		raise TypeError("The Dataset resource is not a DataFrame, but \"{type}\".".format(
+			type=resource_metadata.get('structural_type', None),
+		))
 
-		resource_metadata.update(
-			{
-				'schema': mbase.CONTAINER_SCHEMA_VERSION,
-			},
-		)
+	resource_metadata.update(
+		{
+			'schema': mbase.CONTAINER_SCHEMA_VERSION,
+		},
+	)
 
-		new_metadata = mbase.DataMetadata(resource_metadata)
+	new_metadata = mbase.DataMetadata(resource_metadata)
 
-		new_metadata = metadata.copy_to(new_metadata, (resource_id,))
+	new_metadata = metadata.copy_to(new_metadata, (resource_id,))
 
-		# Resource is not anymore an entry point.
-		new_metadata = new_metadata.remove_semantic_type((), 'https://metadata.datadrivendiscovery.org/types/DatasetEntryPoint')
+	# Resource is not anymore an entry point.
+	new_metadata = new_metadata.remove_semantic_type((), 'https://metadata.datadrivendiscovery.org/types/DatasetEntryPoint')
 
-		return new_metadata
+	return new_metadata
 
 def get_resource(inputs, resource_name):
 	_id, _df = base_utils.get_tabular_resource(inputs, resource_name)
@@ -154,25 +154,25 @@ def get_resource(inputs, resource_name):
 	return _id, _df
 
 def get_columns_of_type(df, semantic_types): 
-		columns = df.metadata.list_columns_with_semantic_types(semantic_types)
+	columns = df.metadata.list_columns_with_semantic_types(semantic_types)
 
-		def can_use_column(column_index: int) -> bool:
-				return column_index in columns
+	def can_use_column(column_index: int) -> bool:
+			return column_index in columns
 
-		# hyperparams['use_columns'], hyperparams['exclude_columns']
-		columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) # metadata, include, exclude_columns, idx_function
+	# hyperparams['use_columns'], hyperparams['exclude_columns']
+	columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) # metadata, include, exclude_columns, idx_function
 
-		if not columns_to_use:
-				raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(
-						semantic_types=semantic_types,
-				))
+	if not columns_to_use:
+			raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(
+					semantic_types=semantic_types,
+			))
 
-		#if columns_not_to_use: #and hyperparams['use_columns']
-				#cls.logger.warning("Node attributes skipping columns: %(columns)s", {
-				#        'columns': columns_not_to_use,
-				#})
+	#if columns_not_to_use: #and hyperparams['use_columns']
+			#cls.logger.warning("Node attributes skipping columns: %(columns)s", {
+			#        'columns': columns_not_to_use,
+			#})
 
-		return df.select_columns(columns_to_use)
+	return df.select_columns(columns_to_use)
 
 def make_keras_pickleable():
 		def __getstate__(self):
@@ -327,14 +327,13 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 				"name": "Mixhop GCN",
 				"description": "Graph convolutional neural networks (GCN) as in Kipf & Welling 2016, generalized to k-hop edge links via Abu-el-Haija et al 2019: https://arxiv.org/abs/1905.00067 (GCN recovered for k = 1).  In particular, learns weight transformation of feature matrix X for various powers of adjacency matrix, i.e. nonlinearity(A^k X W), and concatenates into an embedding layer.  Feature input X may be of the form: identity matrix (node_id) w/ node features appended as columns.  Specify order using 'adjacency_order' hyperparam.  Expects list of [learning_df, edges_df, edges_df] as input (e.g. by running common_primitives.normalize_graphs + data_tranformation.graph_to_edge_list.DSBOX)",
 				"python_path": "d3m.primitives.feature_construction.gcn_mixhop.DSBOX",
-				"original_python_path": "gcn_mix.GCN",
+				"original_python_path": "gcn_mixhop.GCN",
 				"source": {
 						"name": "ISI",
 						"contact": "mailto:brekelma@usc.edu",
 						"uris": [ "https://github.com/brekelma/dsbox_graphs" ]
 				},
 				"installation": [ cfg_.INSTALLATION ],
-
 				# See possible types here :https://gitlab.com/datadrivendiscovery/d3m/blob/devel/d3m/metadata/schemas/v0/definitions.json
 				"algorithm_types": ["CONVOLUTIONAL_NEURAL_NETWORK"],
 				"primitive_family": "FEATURE_CONSTRUCTION",
