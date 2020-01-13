@@ -67,6 +67,24 @@ def make_keras_pickleable():
     cls.__getstate__ = __getstate__
     cls.__setstate__ = __setstate__
 
+
+def get_columns_not_of_type(df, semantic_types):
+    columns = df.metadata.list_columns_with_semantic_types(semantic_types)
+    
+    def can_use_column(column_index: int) -> bool:
+        return column_index not in columns
+    
+    # hyperparams['use_columns'], hyperparams['exclude_columns'] 
+    
+    columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) # metadata, include, exclude_cols, idx_function
+    
+    if not columns_to_use:
+        raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(
+            semantic_types=semantic_types,
+        ))
+    
+    return df.select_columns(columns_to_use)
+
 def get_columns_of_type(df, semantic_types):
         columns = df.metadata.list_columns_with_semantic_types(semantic_types)
 
@@ -383,14 +401,16 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                     
         #result = self._model.learn_embedding(self.training_data)
         #result = result[0]
-        
+
+        target_types = ['https://metadata.datadrivendiscovery.org/types/TrueTarget', 'https://metadata.datadrivendiscovery.org/types/SuggestedTarget']
         if self.hyperparams['return_list']:
             result_np = container.ndarray(result, generate_metadata = True)
             return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
             return CallResult(return_list, True, 1)
         else:
-            
             learn_df = d3m_DataFrame(learning_df, generate_metadata = True)
+            learn_df = get_columns_not_of_type(learn_df, target_types)
+    
             result_df = d3m_DataFrame(result, generate_metadata = True)
             result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)] 
 
