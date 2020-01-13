@@ -936,26 +936,55 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         
 
                         if not self.hyperparams['return_embedding']:
-                                        output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True, source = self)
+                                        output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True)
                                         output.index = learning_df.index.copy()
                         else:
                                         print("LEARNING DF ", learning_df['d3mIndex'])
                                         print("RESULT ", result.shape)
-                                        output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True, source = self)                     
-                                        
-                        #output.index.name = 'd3mIndex'
+                                        output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True)                     
                         
-                        outputs = output
-                        
-                        self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
+                        target_types = ('https://metadata.datadrivendiscovery.org/types/TrueTarget',
+                                        'https://metadata.datadrivendiscovery.org/types/SuggestedTarget')
 
-                        output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
-                                add_index_columns=True,#self.hyperparams['add_index_columns'], 
-                                inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
-                   
+                        learn_df = d3m_DataFrame(learning_df, generate_metadata = True)
+                        learn_df = get_columns_not_of_type(learn_df, target_types)
+
+                        result_df = d3m_DataFrame(result, generate_metadata = True)
+                        result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)] 
+                        
+
+                        for column_index in range(result_df.shape[1]):
+                                col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
+                                col_dict['structural_type'] = type(1.0)
+                                col_dict['name'] = str(learn_df.shape[1] + column_index) #should just be column index, no corex prefix #'corex_' + 
+                                col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
+
+                                result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
+                        result_df.index = learn_df.index.copy()
+                        
+                        output = utils.append_columns(learn_df, result_df)
                         return CallResult(output, True, 1)
+
+                        # PREVIOUS RETURN MECHANISM
+                        # outputs = output
+                        
+                        # self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
+
+                        # output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
+                        #         add_index_columns=True,#self.hyperparams['add_index_columns'], 
+                        #         inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
+                   
+                        # return CallResult(output, True, 1)
+
                         #return CallResult(outputs, True, 1)
-                                                
+                
+ 
+
+
+
+
+
+
                                 
                                 # TO DO : continue_fit, timeout
                                 
