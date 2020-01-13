@@ -153,6 +153,28 @@ def get_resource(inputs, resource_name):
 	_df.metadata = _update_metadata(inputs.metadata, _id)
 	return _id, _df
 
+def get_columns_not_of_type(df, semantic_types): 
+	columns = df.metadata.list_columns_with_semantic_types(semantic_types)
+
+	def can_use_column(column_index: int) -> bool:
+			return column_index not in columns
+
+	# hyperparams['use_columns'], hyperparams['exclude_columns']
+	columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) # metadata, include, exclude_columns, idx_function
+
+	if not columns_to_use:
+			raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(
+					semantic_types=semantic_types,
+			))
+
+	#if columns_not_to_use: #and hyperparams['use_columns']
+			#cls.logger.warning("Node attributes skipping columns: %(columns)s", {
+			#        'columns': columns_not_to_use,
+			#})
+
+	return df.select_columns(columns_to_use)
+
+
 def get_columns_of_type(df, semantic_types): 
 	columns = df.metadata.list_columns_with_semantic_types(semantic_types)
 
@@ -367,13 +389,14 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 			sources = sources.astype(np.int32)
 			dests = dests.astype(np.int32)
 			to_fit = np.sort(np.concatenate([sources.values,dests.values], axis = -1).astype(np.int32).ravel())
-			self._num_edge_nodes = to_fit.shape[0]
+			
 
 			#to_fit = node_subset if node_subset is not None else np.concatenate([sources.values,dests.values], axis = -1).ravel()
 			self.node_encode.fit(to_fit) #nodes_df[id_col].values)
 			node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32))
 			sources[sources.columns[0]] = self.node_encode.transform(sources.values.astype(np.int32))
 			dests[dests.columns[0]] = self.node_encode.transform(dests.values.astype(np.int32))
+			self._num_edge_nodes = len(list(self.node_encode.classes_)) #to_fit.shape[0]
 			# node subset = df with index
 
 			#id_col = [i for i in nodes_df.columns if 'node' in i and 'id' in i.lower()][0]
@@ -897,9 +920,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 			#output.index.name = 'd3mIndex'
 			
 			outputs = output
-			
+
+			target_types = ['https://metadata.datadrivendiscovery.org/types/TrueTarget', 'https://metadata.datadrivendiscovery.org/types/SuggestedTarget']
+			without_labels = get_columns_not_of_type(learning_df, tuple(target_types))
 			self._training_indices = [c for c in learning_df.columns if isinstance(c, str) and 'index' in c.lower()]
 
+	
 			output = utils.combine_columns(return_result='new', #self.hyperparams['return_result'],
 										   add_index_columns=True,#self.hyperparams['add_index_columns'], 
 										   inputs=learning_df, columns_list=[output], source=self, column_indices=self._training_indices)
