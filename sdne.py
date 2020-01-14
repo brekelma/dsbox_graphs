@@ -253,14 +253,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         return adj
     
     def _get_source_dest(self, edges_df, source_types = None, dest_types = None):
-        print()
-        print(edges_df.metadata)#.list_columns_with_semantic_types())
-        try:
-            print(edges_df[ALL_ELEMENTS])
-        except:
-            pass
-        print("METADATA ")
-        print()
+        
         if source_types is None:
                 source_types = ('https://metadata.datadrivendiscovery.org/types/EdgeSource',
                                 'https://metadata.datadrivendiscovery.org/types/DirectedEdgeSource',
@@ -301,17 +294,6 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             except:
                 edges_id, edges_df = get_resource(inputs, '1')
 
-        #return learning_df, nodes_df, edges_df
-            
-
-        # try:
-        #     G = loadGraphFromEdgeDF(edges_df)
-        # except Exception as e:
-        #     print()
-        #     print("***************** LOADING GRAPH FROM EDGE LIST error ************", e)
-        #     print()
-
-        # #self.training_data = G
         
         self.node_encode = LabelEncoder()
         sources, dests = self._get_source_dest(edges_df)
@@ -323,9 +305,8 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         
         sources[sources.columns[0]] = self.node_encode.transform(sources.values.astype(np.int32))
         dests[dests.columns[0]] = self.node_encode.transform(dests.values.astype(np.int32))
-        #id_col = [i for i in nodes_df.columns if 'node' in i and 'id' in i.lower()][0]
-        #self.node_enc.fit(nodes_df[id_col].values)
 
+        
         other_training_data = self._make_adjacency(sources,dests, tensor = False)
         return other_training_data if not return_all else other_training_data, learning_df, nodes_df, edges_df
 
@@ -334,14 +315,9 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         training_data = self._parse_inputs(inputs)
         if isinstance(training_data, tuple):
             training_data = training_data[0]
-        try:
-            self.training_data = networkx.from_scipy_sparse_matrix(training_data)
-        except Exception as e:
-            print()
-            print(e)
-            print()
-            import IPython
-            IPython.embed()
+
+        self.training_data = networkx.from_scipy_sparse_matrix(training_data)
+
 
         self.fitted = False
 
@@ -398,9 +374,6 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             self._model = self._sdne._model
             result = self._sdne._Y
 
-                    
-        #result = self._model.learn_embedding(self.training_data)
-        #result = result[0]
 
         target_types = ['https://metadata.datadrivendiscovery.org/types/TrueTarget', 'https://metadata.datadrivendiscovery.org/types/SuggestedTarget']
         if self.hyperparams['return_list']:
@@ -410,21 +383,25 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         else:
             learn_df = d3m_DataFrame(learning_df, generate_metadata = True)
             learn_df = get_columns_not_of_type(learn_df, target_types)
-    
+
+            learn_df = learn_df.remove_columns([learn_df.columns.get_loc('nodeID')])
+            #learn_df = learn_df.drop('nodeID', axis = 'columns')
+            
             result_df = d3m_DataFrame(result, generate_metadata = True)
             result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)] 
 
             for column_index in range(result_df.shape[1]):
                 col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
                 col_dict['structural_type'] = type(1.0)
-                # FIXME: assume we apply corex only once per template, otherwise column names might duplicate
-                col_dict['name'] = str(learn_df.shape[1] + column_index) #should just be column index, no corex prefix #'corex_' + 
+                col_dict['name'] = str(learn_df.shape[1] + column_index) 
                 col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
 
                 result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
             result_df.index = learn_df.index.copy()
             
+            
             output = utils.append_columns(learn_df, result_df)
+            #output.set_index('d3mIndex', inplace=True)
             return CallResult(output, True, 1)
         
     
@@ -438,17 +415,10 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         return SDNE_Params(
             fitted = self.fitted,
             model = self._sdne,
-            #model = self._model,
             node_encode = self.node_encode
         )
 	
     def set_params(self, *, params: SDNE_Params) -> None:
         self.fitted = params['fitted']
         self._sdne = params['model']
-        #self._model = params['model']
         self.node_encode = params['node_encode']
-    #def __copy__(self):
-    #    new = SDNE()
-
-    #def __deepcopy__(self):
-        
