@@ -47,14 +47,9 @@ Output = container.DataFrame
 def dot(x, y, sparse=False):
         """Wrapper for tf.matmul (sparse vs dense)."""
         if sparse:
-                print()
-                print("X * Y ", x, y)
-                print()
                 try:
-                        #res = tf.sparse.sparse_dense_matmul(x, y)
                         res = tf.sparse.sparse_dense_matmul(x, y) 
                 except Exception as e:
-                        #IPython.embed()
                         try:
                                 res = tf.matmul(x, y, a_is_sparse = True)
                         except:
@@ -306,8 +301,14 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
                 )
                 
                 use_features = UniformBool(
-                                default = False,
+                                default = True,
                                 description='Indicates whether to use input features.  If False, uses only adjacency matrix.  This is also a workaround for not having features from all input points (see data-supply/issues/213)',
+                                semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter']
+                )
+
+                include_adjacency = UniformBool(
+                                default = False,
+                                description='Indicates whether to use adjacency matrix as part of feature input X. Will behave as if True if use_features=False or only a subset of nodes features are available.',
                                 semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter']
                 )
                 
@@ -368,8 +369,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 def set_training_data(self, *, inputs : Input, outputs : Output) -> None:
                         learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
-                        print("LEARNING ", learning_df)
-                        print("NODES ", nodes_df)
+
                         #nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
 
                         ''' *******************************************
@@ -378,28 +378,24 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 - check if have all features? (e.g. learning_df.shape[0] == sources+dests.unique)
                                 *******************************************
                         '''
-                        #if self.hyperparams['node_subset']:
                         node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-                        #else:
-                        #    node_subset = None
-                        #node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+
+                        try:
+                                nodes_df = nodes_df.remove_columns([nodes_df.columns.get_loc(c) for c in nodes_df.columns if 'node' in c and 'id' in c.lower() or 'd3mIndex' in c])
+                        except:
+                                pass
+                        
                 
                         self.node_encode = LabelEncoder()
-                        print("Learning DF ")
-                        print(learning_df)
-                        print("Node DF ")
-                        print(nodes_df)
-                        print("Edges DF ")
-                        print(edges_df)
-                        
+
                         sources, dests = self._get_source_dest(edges_df)
                         sources = sources.astype(np.int32)
                         dests = dests.astype(np.int32)
                         to_fit = np.sort(np.concatenate([sources.values,dests.values], axis = -1).astype(np.int32).ravel())
-                        print(np.amin(to_fit), '=1 ', np.amin(to_fit)==1)
-                        print(np.amin(learning_df['nodeID'].values), '==0 ', int(np.amin(learning_df['nodeID'].values))==0)
+ 
+
                         if np.amin(to_fit) == 1 and int(np.amin(learning_df['nodeID'].values)) == 0:
-                                print("ENTERED")
+
                                 edges_df['node1'] = edges_df['node1'].values.astype(int) - 1
                                 edges_df['node2'] = edges_df['node2'].values.astype(int) - 1
                                 sources['node1']-=1
@@ -433,7 +429,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 #                                       node_subset = node_subset_enc)#.values.astype(np.int32))
                                 
                                 self._input = self._make_input_features(nodes_df, 
-                                                                        just_adj = not self.hyperparams['use_features'])#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
+                                                                        just_adj = not self.hyperparams['use_features'],
+                                                                        incl_adj = self.hyperparams['include_adjacency'])#.loc[learning_df['d3mIndex'].astype(np.int32)])#.index])
 
 
                                 self._adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
@@ -500,14 +497,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         return learning_df, nodes_df, edges_df
 
                 def _get_source_dest(self, edges_df, source_types = None, dest_types = None):
-                                print()
-                                print(edges_df.metadata)#.list_columns_with_semantic_types())
-                                try:
-                                        print(edges_df[ALL_ELEMENTS])
-                                except:
-                                        pass
-                                print("METADATA ")
-                                print()
+                                
                                 if source_types is None:
                                                 source_types = ('https://metadata.datadrivendiscovery.org/types/EdgeSource',
                                                                                 'https://metadata.datadrivendiscovery.org/types/DirectedEdgeSource',
@@ -532,13 +522,14 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 def _normalize_adjacency(self, adj = None, node_subset = None):
                         if adj is None:
                                 adj = self._adj
+
                         if isinstance(adj, np.ndarray):
                                 row_sum = np.sqrt(np.sum(adj,axis=-1).ravel())
                                 col_sum = np.sqrt(np.sum(adj,axis=0).ravel())
                                 rows = np.diag(np.where(np.isinf(1/row_sum), np.zeros_like(row_sum), 1/row_sum))
                                 cols = np.diag(np.where(np.isinf(1/col_sum), np.zeros_like(col_sum), 1/col_sum))
                                 adj = np.dot(np.dot(rows, adj), cols)
-                                return adj
+                        
                         else:
                                 row_sum = np.sqrt(adj.sum(axis=-1).A.ravel())
                                 col_sum = np.sqrt(adj.sum(axis=0).A.ravel())
@@ -547,7 +538,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 #degrees = scipy.sparse.diags(1/np.sqrt(adj.sum(axis=-1).A.ravel())).multiply(scipy.sparse.diags(1/np.sqrt(adj.sum(axis=0).A.ravel())))
                                 #adj = adj @ degrees
                                 adj = rows.dot(adj).dot(cols)
-                                return adj
+                        return adj
 
                 def _make_adjacency(self, sources, dests, num_nodes = None, tensor = False, #True, 
                                                         node_subset = None):
@@ -555,52 +546,32 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                         sources = sources.astype(np.int32)
                         dests = dests.astype(np.int32)
-                        # *** encode node ids *** 
-                        #self.node_enc = LabelEncoder()
-                        #to_fit = node_subset if node_subset is not None else np.concatenate([sources.values,dests.values], axis = -1).ravel()
-                        #self.node_enc.fit(to_fit) #nodes_df[id_col].values)
-
-                        # self.node_enc = LabelEncoder()
-                        # #id_col = [i for i in nodes_df.columns if 'node' in i and 'id' in i.lower()][0]
-                        # to_fit = node_subset if node_subset is not None else np.concatenate([sources.values,dests.values], axis = -1).ravel()
-
-                        # self.node_enc.fit(to_fit) #nodes_df[id_col].values)
-
+                        
                         num_nodes = np.unique(np.concatenate([sources, dests], axis = -1)).shape[0] if num_nodes is None else num_nodes
-                        # **** ALWAYS RETURNS FULL ADJACENCY MATRIX **** (downsample later)
+                        
+                        
+                        if tensor:
+                                adj = tf.SparseTensor([[sources.values[i, 0], dests.values[i,0]] for i in range(sources.values.shape[0])], [1.0 for i in range(sources.values.shape[0])], dense_shape = (num_nodes, num_nodes))
+                        else:
+                                self_connect = [i for i in np.sort(np.unique(sources.values.astype(np.int32)))] if len(np.unique(sources.values.astype(np.int32)))>len(np.unique(dests.values.astype(np.int32))) else [i for i in np.sort(np.unique(dests.values.astype(np.int32)))] 
+                                source_inds = [sources.values.astype(np.int32)[i, 0] for i in range(sources.values.shape[0])]
+                                dest_inds = [dests.values.astype(np.int32)[i,0] for i in range(sources.values.shape[0])]
 
-                        try:
-                                if tensor:
-                                        adj = tf.SparseTensor([[sources.values[i, 0], dests.values[i,0]] for i in range(sources.values.shape[0])], [1.0 for i in range(sources.values.shape[0])], dense_shape = (num_nodes, num_nodes))
+                                
+                                # ************** TREATS ALL EDGES AS SYMMETRIC, UNWEIGHTED **********************************
+                                # to do : fix
+                                # adds self-connections
+                                entries = np.concatenate([np.array([source_inds, dest_inds]), np.array([self_connect, self_connect])],axis = -1)
+                                
+                                if self.hyperparams['sparse']:
+                                        adj = csr_matrix(([1.0 for i in range(entries.shape[-1])], #range(source.values.shape[0])], 
+                                                          entries), shape = (num_nodes, num_nodes), dtype = np.float32)
                                 else:
-                                        self_connect = [i for i in np.sort(np.unique(sources.values.astype(np.int32)))] if len(np.unique(sources.values.astype(np.int32)))>len(np.unique(dests.values.astype(np.int32))) else [i for i in np.sort(np.unique(dests.values.astype(np.int32)))] 
-                                        source_inds = [sources.values.astype(np.int32)[i, 0] for i in range(sources.values.shape[0])]#+self_connect
-                                        dest_inds = [dests.values.astype(np.int32)[i,0] for i in range(sources.values.shape[0])]#+self_connect
-                                        #[i for i in np.sort(np.unique(.values.astype(np.int32)))]
-
-                                        # ************** TREATS ALL EDGES AS SYMMETRIC **********************************
-                                        # to do : reconsider symmetric normalized adjacency input condition
-                                        
-
-                                        # entries = np.concatenate([np.array([source_inds, dest_inds]), np.array([dest_inds, source_inds]), np.array([self_connect, self_connect])],axis = -1)
-                                        # no auto-symmetrization (datasets given so far contain edges both directions)
-                                        entries = np.concatenate([np.array([source_inds, dest_inds]), np.array([self_connect, self_connect])],axis = -1)
-                                        
-                                        if self.hyperparams['sparse']:
-                                                adj = csr_matrix(([1.0 for i in range(entries.shape[-1])], #range(source.values.shape[0])], 
-                                                        entries), shape = (num_nodes, num_nodes), dtype = np.float32)
-                                        else:
-                                                adj = np.zeros(shape = (num_nodes,num_nodes))
-                                                for i in range(entries.shape[-1]):
-                                                        adj[entries[0,i], entries[1,i]]=1.0
-                                                        adj[entries[1,i], entries[0,i]]=1.0
-                                        
-                                        
-                        except Exception as e:
-                                print("MAKE ADJ expection : ", e)
-                                import IPython
-                                IPython.embed()
-                        #tf.sparse.placeholder(dtype,shape=None,name=None)
+                                        adj = np.zeros(shape = (num_nodes,num_nodes))
+                                        for i in range(entries.shape[-1]):
+                                                adj[entries[0,i], entries[1,i]]=1.0
+                                                adj[entries[1,i], entries[0,i]]=1.0 # remove?
+                                                                                
 
                         return adj
                 
@@ -610,72 +581,62 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         num_nodes = edges_df.shape[0]
 
                         # TO DO: change edge detection logic to reflect directed / undirected edge source/target
-                        #   multigraph = different adjacency matrix for each edge type?  
+                        #   multigraph = different adjacency matrix (and weights) for each edge type   (e.g. link prediction)
                         
-                        # sources.values[i], dests.values[j]
                         edges = [[i,j] for i in range(sources.values.shape[0]) for j in range(dests.values.shape[0]) if dests.values[j,0] == sources.values[i,0]]
                         weights = [1.0 for i in range(len(edges))]
                         
-
-                        # label encoding of nodes not necessary (only looking for shared nodes)
-                        # label encoding of edges not necessary if edges have unique ID ordered 0:num_edges
-                        #self.node_enc = LabelEncoder()
-                        #node_subset = node_subset if node_subset is not None else edges_df['d3mIndex'].values
-                        #self.node_enc.fit(node_subset) # edges indices
-
                         if tensor:
                                 adj = tf.SparseTensor(edges, weights, dense_shape = (num_nodes, num_nodes))
                         else:
-                                # NORMALIZE?
                                 edges = ([edges[i][0] for i in range(len(edges))], [edges[i][1] for i in range(len(edges))])
                                 adj = csr_matrix((weights, edges), shape = (num_nodes, num_nodes), dtype = np.float32)
                         return adj
 
 
-                def _make_input_features(self, nodes_df, tensor = False, num_nodes = None, just_adj = False):# tensor = True):
+                def _make_input_features(self, nodes_df, tensor = False, num_nodes = None, just_adj = False, incl_adj = False):# tensor = True):
                         num_nodes = num_nodes if num_nodes is not None else nodes_df.shape[0]
 
-                        # always include adjacency (prev incl_adj = True arg)
-                        if tensor:
+                        # include adjacency matrix as features?  Or default to this if don't have 
+                        if incl_adj or (len(nodes_df.columns) > 2 and not (self._num_edge_nodes == self._num_training_nodes and just_adj)):
+                                if tensor:
                                         node_id = tf.cast(tf.eye(num_nodes), dtype = tf.float32)
                                         #node_id = tf.sparse.eye(nodes_df.shape[0])
-                        else:
+                                else:
                                         #node_id = scipy.sparse.identity(nodes_df.shape[0], dtype = np.float32) #
                                         node_id = np.eye(num_nodes)
 
-                        print("*"*50)
-                        print(' edges = num training nodes? : ', self._num_edge_nodes == self._num_training_nodes)
-                        print("*"*50)
-                        self._input_columns = num_nodes #if incl_adj else 0
+                        
+                                self._input_columns = num_nodes #if incl_adj else 0
                         # TO DO: preprocess features, e.g. if non-numeric / text?
                         # CHANGE (included but to be tested): inputs = adjacency if don't have features for all nodes
-                        if len(nodes_df.columns) > 2 and (self._num_edge_nodes == self._num_training_nodes or not just_adj):
+                        if len(nodes_df.columns) > 2 and (self._num_edge_nodes == self._num_training_nodes and not just_adj):
                                 semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
                                                                         'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
 
                                 features = get_columns_of_type(nodes_df, semantic_types).values.astype(np.float32)
-                                self._input_columns += features.shape[-1]
+
+                                self._input_columns = self._input_columns+features.shape[-1] if incl_adj else features.shape[-1]
 
                                 if tensor:
                                                 features = tf.convert_to_tensor(value=features)
-                                                to_return= tf.concat([features, node_id], -1) #if incl_adj else features
+                                                to_return= tf.concat([features, node_id], -1) if incl_adj else features
                                 else:
-                                                to_return= np.concatenate([features, node_id], axis = -1) #if incl_adj else features
-                                        
+                                                to_return= np.concatenate([features, node_id], axis = -1) if incl_adj else features
                         else:
-                                        to_return = node_id
+                                to_return = node_id
 
+                                        
                         return to_return
-                        # *** WHY SPARSE ? *** 
-                        #return csr_matrix(to_return)
 
+
+                # line graph switches roles of edges and nodes (e.g. for link prediction)
+                # ******* NOT EXTENSIVELY TESTED ************
                 def _make_line_inputs(self, edges_df, tensor = False, incl_adj = True):
                         # ID for evaluating adjacency matrix
                         if tensor:
                                         node_id = tf.cast(tf.eye(edges_df.shape[0]), dtype = tf.float32)
-                                        #node_id = tf.sparse.eye(edges_df.shape[0])
                         else:
-                                        #node_id = scipy.sparse.identity(edges_df.shape[0], dtype = np.float32) #
                                         node_id = np.eye(edges_df.shape[0])
                         
                         # additional features?
@@ -704,28 +665,24 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         if self.fitted:
                                 return CallResult(None, True, 1)
 
-                        # ******************************************
-                        # Feel free to fill in less important hyperparameters or example architectures here
-                        # ******************************************
                         self._task = 'classification'
-                        self._act = 'relu'
-                        self._epochs = 200 if self._num_training_nodes < 10000 else 50
+                        self._act = 'tanh'
+                        self._epochs = self.hyperparams['epochs']
                         self._units = [100, 100, 100]
                         self._mix_hops = self.hyperparams['adjacency_order']
                         self._modes = 1
                         self._lr = self.hyperparams['lr']
                         self._optimizer = keras.optimizers.Adam(self._lr)
-                        self._extra_fc = 100 
+                        self._extra_fc = None #100
                         self._batch_norm = self.hyperparams['batch_norm']
-                        # self._adj and self._input already set as keras Input tensors
 
 
-                        #adj_input = keras.layers.Input(shape = self._adj.shape[1:], name = 'adjacency', sparse = True, dtype = tf.float32)
+                        # DEVEL option 
                         inp_tensors = False
                         if inp_tensors:
                                         adj_input = keras.layers.Input(tensor = self._adj, name = 'adjacency', dtype = 'float32')
                                         feature_input = keras.layers.Input(tensor = self._input, name = 'features', dtype = 'float32')
-                                        # previous 
+
                                         #adj_input = keras.layers.Input(tensor = self._adj, batch_shape = (None, tf.shape(self._adj)[-1]), name = 'adjacency', dtype = tf.float32)
                                         #feature_input = keras.layers.Input(tensor = self._input, batch_shape = (None, self._input_columns), name = 'features', dtype = tf.float32)
                         else:
@@ -735,10 +692,6 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         self.y_true = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
                         self.inds = keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
 
-                        #y_true = keras.layers.Input(shape = (self.training_outputs.shape[-1],), name = 'y_true')
-                        #inds = keras.layers.Input(shape = (None,), dtype=tf.int32, name = 'training_inds')
-                        
-                        #feature_input = keras.layers.Input(shape = self._input.shape[1:], name = 'features')#sparse =True) #tensor =  if tensor else tf.convert_to_tensor(to_return))
                    
                         # **** TO DO **** utilize self._modes (e.g. for link prediction with multiple types)
                         A = adj_input
@@ -768,7 +721,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 H = keras.layers.Dense(self._extra_fc, activation = self._act)(H)
 
 
-                        #self._embedding_model = keras.models.Model(inputs = self._input, outputs = embedding)
+                        # self._embedding_model = keras.models.Model(inputs = self._input, outputs = embedding)
                         # make_task
                         # ********************** ONLY NODE CLF RIGHT NOW *******************************
                         #if self._task == 'node_clf':
@@ -818,20 +771,14 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 pass
 
                         
-                        self.model.fit(x = [self._adj, self._input], #[self._adj],#, self._input], # already specified as tensors
-                                                   y = [self.training_outputs],# + [np.squeeze(self.training_outputs)],                               
+                        self.model.fit(x = [self._adj, self._input], 
+                                                   y = [self.training_outputs],
                                                    shuffle = False, epochs = self._epochs, 
                                                    batch_size = self._num_training_nodes,
                                                    verbose = 1
                                 ) #self.training_inds.shape[0])
-                                                   #batch_size = self._num_training_nodes) 
                         
-                        # all must have same # of samples
-                        # self.model.fit(x = [self.training_outputs, self.training_inds, self._adj, self._input], #[self._adj],#, self._input], # already specified as tensors
-                        #                y = [self.training_outputs],# + [np.squeeze(self.training_outputs)],                               
-                        #                shuffle = False, epochs = self._epochs, 
-                        #                batch_size = self._num_training_nodes) #self.training_inds.shape[0])
-
+                        
                         self.fitted = True
                         make_keras_pickleable()
                         return CallResult(None, True, 1)
@@ -840,84 +787,65 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 def produce(self, *, inputs : Input, outputs : Output, timeout : float = None, iterations : int = None) -> CallResult[Output]:
                         make_keras_pickleable()
                         if self.fitted:
-                                        # embed ALL (even unlabelled examples)
-                                        learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
-
-                                        # Assume always True
-                                        #if self.hyperparams['node_subset']:
-                                        node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-                                        #else:
-                                        #       node_subset = None
-                                        
-                                        # node_encode.transform(produce_data), take that adj matrix slice, normalize
-                                        if not self.hyperparams['line_graph']:
-                                                        try:
-                                                                        self._num_training_nodes = node_subset.values.shape[0]
-                                                        except:
-                                                                        self._num_training_nodes = nodes_df.values.shape[0]
-                                                        #_adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
-                                                        _input = self._make_input_features(nodes_df, just_adj = not self.hyperparams['use_features'])
-                                                        # PRODUCE CAN WORK ON ONLY SUBSAMPLED Adjacency matrix (already created)
-                                                        
-
-
-                                                        #node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32))
-                                                        #sources[sources.columns[0]] = self.node_encode.transform(sources.values.astype(np.int32))
-                                                        #dests[dests.columns[0]] = self.node_encode.transform(dests.values.astype(np.int32))
-                                                        try:
-                                                                node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32))
-                                                                _adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
-                                                        except:
-                                                                node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32)+1)
-                                                                _adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
-                                        else:
-                                                # REDO LINE_GRAPH
-                                                self._num_training_nodes = edges_df.values.shape[0]
-                                                _adj = self._make_line_adj(edges_df) 
-                                                _input = self._make_line_inputs(edges_df)
-                                                raise NotImplementedError()     
-
-
-
-                                        target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
-                                                        'https://metadata.datadrivendiscovery.org/types/TrueTarget')
+                                # embed ALL (even unlabelled examples)
+                                learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
                                 
-                                        targets =  get_columns_of_type(learning_df, target_types)
+                                node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
+                                try:
+                                        #learning_df = learning_df.remove_columns([learning_df.columns.get_loc(c) for c in learning_df.columns if 'node' in c and 'id' in c.lower()])
+                                        nodes_df = nodes_df.remove_columns([nodes_df.columns.get_loc(c) for c in nodes_df.columns if 'node' in c and 'id' in c.lower() or 'd3mIndex' in c])
+                                except:
+                                        pass
 
+                                
+                                if not self.hyperparams['line_graph']:
                                         
-                                        self._parse_data(learning_df, targets, node_subset = node_subset)
-                                        _adj = _adj.todense() if (not self.hyperparams['sparse'] and not isinstance(_adj,np.ndarray)) else _adj
-                                        result = self.pred_model.predict([_adj, _input], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
+                                        #self._num_training_nodes = node_subset.values.shape[0]
+                                                
+                                        
+                                        #_adj = self._make_adjacency(edges_df, num_nodes = nodes_df.shape[0], node_subset = node_subset.values.astype(np.int32))
+                                        _input_ = self._make_input_features(nodes_df, just_adj = not self.hyperparams['use_features'], incl_adj = self.hyperparams['include_adjacency'])
+                                        # PRODUCE CAN WORK ON ONLY SUBSAMPLED Adjacency matrix (already created)
+                                        _nodes = self.pred_model.input_shape[0][-1]
+                                        _features = self.pred_model.input_shape[1][-1]
+                                        _input = np.zeros((_nodes,_features))
+                                        
+                                        node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32))
+                                        _input[node_subset_enc] = _input_
+                                        _adj = self.full_adj
+                                        
+                                else:
+                                        # LINE GRAPH WIP
+                                        self._num_training_nodes = edges_df.values.shape[0]
+                                        _adj = self._make_line_adj(edges_df) 
+                                        _input = self._make_line_inputs(edges_df)
+                                        raise NotImplementedError()     
+
+
+
+                                target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
+                                                'https://metadata.datadrivendiscovery.org/types/TrueTarget')
+                                
+                                targets =  get_columns_of_type(learning_df, target_types)
+                                
+                                        
+                                self._parse_data(learning_df, targets, node_subset = node_subset)
+                                _adj = _adj.todense() if (not self.hyperparams['sparse'] and not isinstance(_adj,np.ndarray)) else _adj
+                                result = self.pred_model.predict([_adj, _input], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
                                         
                                         
-                                        #self._parse_data(learning_df, targets, node_subset = node_subset)
-                                        #self.node_encode.transform(node_subset.values.astype(np.int32)+1)
-                                        #_adj = self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
-                                        #_adj = _adj.todense() if (not self.hyperparams['sparse'] and not isinstance(_adj,np.ndarray)) else _adj
-                                        #result = self.pred_model.predict([_adj, _input], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
-                                        
-                                        
-                                        result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
+                                result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
                                    
-                                        if self.hyperparams['return_embedding']:
-                                                        # try:
-                                                        #         output_embed = self.model.layers[-2].output 
-                                                        #         func = K.function([self.model.input[0], self.model.input[1], K.learning_phase()], [output_embed])
-                                                        #         embed = func([adj, inp, 1.])[0]
-                                                        # except:
-                                                        try:
-                                                                        embed = self.embedding_model.predict([_adj, _input], steps = 1)
-                                                        except:
-                                                                        embed = self.embedding_model.predict([_adj, _input, self.training_inds], steps = 1)
-                                                                        
-                                                        embed = embed[self.training_inds]
-                                                        try:
-                                                                        result = np.concatenate([result, embed], axis = -1)
-                                                        except:
-                                                                        result = np.concatenate([np.expand_dims(result, 1), embed], axis = -1)
-                                                        import IPython 
-                                                        IPython.embed()
-
+                                if self.hyperparams['return_embedding']:
+                                        try:
+                                                embed = self.embedding_model.predict([_adj, _input], steps = 1)
+                                        except:
+                                                embed = self.embedding_model.predict([_adj, _input, self.training_inds], steps = 1)
+                                        try:
+                                                result = np.concatenate([result, embed], axis = -1)
+                                        except:
+                                                result = np.concatenate([np.expand_dims(result, 1), embed], axis = -1)
+                                        #result = result[self.training_inds]
 
                         else:
                                         raise Error("Please call fit first")
@@ -928,27 +856,14 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         # ** Please confirm / double check **
                         # ******************************************
 
-
-                        #if self.hyperparams['return_list']:
-                        #        result_np = container.ndarray(result, generate_metadata = True)
-                        #        return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
-                        #        return CallResult(return_list, True, 1)
-                        
-
-                        if not self.hyperparams['return_embedding']:
-                                        output = d3m_DataFrame(result, index = learning_df['d3mIndex'], columns = [learning_df.columns[-1]], generate_metadata = True)
-                                        output.index = learning_df.index.copy()
-                        else:
-                                        print("LEARNING DF ", learning_df['d3mIndex'])
-                                        print("RESULT ", result.shape)
-                                        output = d3m_DataFrame(result, index = learning_df['d3mIndex'], generate_metadata = True)                     
                         
                         target_types = ('https://metadata.datadrivendiscovery.org/types/TrueTarget',
                                         'https://metadata.datadrivendiscovery.org/types/SuggestedTarget')
 
                         learn_df = d3m_DataFrame(learning_df, generate_metadata = True)
                         learn_df = get_columns_not_of_type(learn_df, target_types)
-
+                        
+                        
                         result_df = d3m_DataFrame(result, generate_metadata = True)
                         result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)] 
                         
@@ -960,9 +875,19 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
 
                                 result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
+
+
+                        #if len(result_df.index) != len(learn_df.index):
+                        #        try:
+                        #                learn_df = learn_df.get_loc(self.training_inds)
+                        #        except Exception as e:
+                        #                print(e)
+                        #                print("learn_df = learn_df.get_loc(self.training_inds)")
+                                        
+
                         result_df.index = learn_df.index.copy()
-                        
                         output = utils.append_columns(learn_df, result_df)
+                        
                         return CallResult(output, True, 1)
 
                         # PREVIOUS RETURN MECHANISM
@@ -976,17 +901,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                    
                         # return CallResult(output, True, 1)
 
-                        #return CallResult(outputs, True, 1)
-                
- 
-
-
-
-
-
-
-                                
-                                # TO DO : continue_fit, timeout
+        
+        
                                 
                 def multi_produce(self, *, produce_methods: typing.Sequence[str], inputs: Input, outputs : Output, timeout: float = None, iterations: int = None) -> MultiCallResult:
                                 return self._multi_produce(produce_methods=produce_methods, timeout=timeout, iterations=iterations, inputs=inputs, outputs=outputs)
