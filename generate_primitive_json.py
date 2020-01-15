@@ -4,7 +4,7 @@ import argparse
 import os.path
 import subprocess
 
-import config
+import dsbox_graphs.config_ as config
 
 # from dsbox_dev_setup import path_setup
 # path_setup()
