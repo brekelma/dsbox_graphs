@@ -19,7 +19,7 @@ from d3m.base import utils as base_utils
 
 from common_primitives import utils
 import d3m.container as container
-import d3m.metadata.base as mbase
+from d3m.metadata.base import CONTAINER_SCHEMA_VERSION, DataMetadata, ALL_ELEMENTS, SelectorSegment
 import d3m.metadata.hyperparams as hyperparams
 import d3m.metadata.params as params
 
@@ -101,7 +101,7 @@ def get_columns_of_type(df, semantic_types):
         
         return df.select_columns(columns_to_use)
 
-def _update_metadata(metadata: mbase.DataMetadata, resource_id: mbase.SelectorSegment) -> mbase.DataMetadata:
+def _update_metadata(metadata: DataMetadata, resource_id: SelectorSegment) -> DataMetadata:
         resource_metadata = dict(metadata.query((resource_id,)))
 
         if 'structural_type' not in resource_metadata or not issubclass(resource_metadata['structural_type'], container.DataFrame):
@@ -111,11 +111,11 @@ def _update_metadata(metadata: mbase.DataMetadata, resource_id: mbase.SelectorSe
 
         resource_metadata.update(
             {
-                'schema': mbase.CONTAINER_SCHEMA_VERSION,
+                'schema': CONTAINER_SCHEMA_VERSION,
             },
         )
 
-        new_metadata = mbase.DataMetadata(resource_metadata)
+        new_metadata = DataMetadata(resource_metadata)
 
         new_metadata = metadata.copy_to(new_metadata, (resource_id,))
 
@@ -391,12 +391,12 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)] 
 
             for column_index in range(result_df.shape[1]):
-                col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
+                col_dict = dict(result_df.metadata.query((ALL_ELEMENTS, column_index)))
                 col_dict['structural_type'] = type(1.0)
                 col_dict['name'] = str(learn_df.shape[1] + column_index) 
                 col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
 
-                result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
+                result_df.metadata = result_df.metadata.update((ALL_ELEMENTS, column_index), col_dict)
             result_df.index = learn_df.index.copy()
             
             

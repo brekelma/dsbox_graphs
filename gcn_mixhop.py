@@ -23,7 +23,7 @@ import keras.models
 
 from common_primitives import utils
 import d3m.container as container
-import d3m.metadata.base as mbase
+from d3m.metadata.base import CONTAINER_SCHEMA_VERSION, DataMetadata, ALL_ELEMENTS, SelectorSegment
 from d3m.base import utils as base_utils
 import d3m.metadata.hyperparams as hyperparams
 import d3m.metadata.params as params
@@ -120,7 +120,7 @@ def import_loss(inputs, function = None, first = None):
 
 
 
-def _update_metadata(metadata: mbase.DataMetadata, resource_id: mbase.SelectorSegment) -> mbase.DataMetadata:
+def _update_metadata(metadata: DataMetadata, resource_id: SelectorSegment) -> DataMetadata:
         resource_metadata = dict(metadata.query((resource_id,)))
 
         if 'structural_type' not in resource_metadata or not issubclass(resource_metadata['structural_type'], container.DataFrame):
@@ -130,11 +130,11 @@ def _update_metadata(metadata: mbase.DataMetadata, resource_id: mbase.SelectorSe
 
         resource_metadata.update(
                 {
-                        'schema': mbase.CONTAINER_SCHEMA_VERSION,
+                        'schema': CONTAINER_SCHEMA_VERSION,
                 },
         )
 
-        new_metadata = mbase.DataMetadata(resource_metadata)
+        new_metadata = DataMetadata(resource_metadata)
 
         new_metadata = metadata.copy_to(new_metadata, (resource_id,))
 
@@ -869,12 +869,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         
 
                         for column_index in range(result_df.shape[1]):
-                                col_dict = dict(result_df.metadata.query((mbase.ALL_ELEMENTS, column_index)))
+                                col_dict = dict(result_df.metadata.query((ALL_ELEMENTS, column_index)))
                                 col_dict['structural_type'] = type(1.0)
                                 col_dict['name'] = str(learn_df.shape[1] + column_index) #should just be column index, no corex prefix #'corex_' + 
                                 col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
 
-                                result_df.metadata = result_df.metadata.update((mbase.ALL_ELEMENTS, column_index), col_dict)
+                                result_df.metadata = result_df.metadata.update((ALL_ELEMENTS, column_index), col_dict)
 
 
                         #if len(result_df.index) != len(learn_df.index):
