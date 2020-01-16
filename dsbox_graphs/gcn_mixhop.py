@@ -427,6 +427,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 self._adj = self._normalize_adjacency(self._adj)
 
 
+                        target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
+                                                'https://metadata.datadrivendiscovery.org/types/TrueTarget')
                         targets = get_columns_of_type(learning_df, target_types)
         
                         self._parse_data(learning_df, targets, node_subset = node_subset)
@@ -780,7 +782,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
                                 
                                 node_subset = learning_df[[c for c in learning_df.columns if 'node' in c and 'id' in c.lower()][0]]
-                                
+
+                                target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
+                                                'https://metadata.datadrivendiscovery.org/types/TrueTarget')
                                 features_df = get_columns_not_of_type(learning_df, target_types)
                                 features_df = features_df.iloc[:, 2:] if 'nodeID' in features_df.columns and 'd3mIndex' in features_df.columns else features_df
                                 #features_df = learning_df.remove_columns([learning_df.columns.get_loc(c) for c in learning_df.columns if 'node' in c and 'id' in c.lower() or 'd3mIndex' in c])
