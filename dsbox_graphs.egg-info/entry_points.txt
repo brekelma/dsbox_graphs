@@ -1,0 +1,4 @@
+[d3m.primitives]
+feature_construction.gcn_mixhop.DSBOX = dsbox_graphs.gcn_mixhop:GCN
+feature_construction.sdne.DSBOX = dsbox_graphs.sdne:SDNE
+

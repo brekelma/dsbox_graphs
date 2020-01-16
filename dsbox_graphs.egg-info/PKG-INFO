@@ -1,0 +1,13 @@
+Metadata-Version: 1.1
+Name: dsbox-graphs
+Version: 1.0.0
+Summary: Graph Embedding and Convolution primitives
+Home-page: https://github.com/brekelma/dsbox_graphs
+Author: Rob Brekelmans
+Author-email: brekelma@usc.edu
+License: AGPL-3.0
+Download-URL: https://github.com/brekelma/dsbox_graphs
+Description: UNKNOWN
+Keywords: d3m_primitive
+Platform: UNKNOWN
+Classifier: Programming Language :: Python
