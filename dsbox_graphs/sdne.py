@@ -29,6 +29,7 @@ from d3m.metadata.base import PrimitiveMetadata
 from d3m.metadata.hyperparams import Uniform, UniformBool, UniformInt, Union, Enumeration
 from d3m.primitive_interfaces.base import CallResult, MultiCallResult
 from d3m.primitive_interfaces.unsupervised_learning import UnsupervisedLearnerPrimitiveBase
+import dsbox_graphs.graph_utils
 
 #import _config as cfg_
 import dsbox_graphs.config_ as cfg_
@@ -273,38 +274,60 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         dests = get_columns_of_type(edges_df, dest_types)
         
         return sources, dests
-
+    
     def _parse_inputs(self, inputs : Input, return_all = False):
         try:
             learning_id, learning_df = get_resource(inputs, 'learningData')
-        except:
-            pass
-        try: # resource id, resource
-            nodes_id, nodes_df = get_resource(inputs, '0_nodes')
-        except:
-            try:
-                nodes_id, nodes_df = get_resource(inputs, 'nodes')
+        #except:
+        #    pass
+            try: # resource id, resource
+                nodes_id, nodes_df = get_resource(inputs, '0_nodes')
             except:
-                nodes_df = learning_df
-        try:
-            edges_id, edges_df = get_resource(inputs, '0_edges')
-        except:
+                try:
+                    nodes_id, nodes_df = get_resource(inputs, 'nodes')
+                except:
+                    nodes_df = learning_df
             try:
-                edges_id, edges_df = get_resource(inputs, 'edges')
+                edges_id, edges_df = get_resource(inputs, '0_edges')
             except:
-                edges_id, edges_df = get_resource(inputs, '1')
+                try:
+                    edges_id, edges_df = get_resource(inputs, 'edges')
+                except:
+                    edges_id, edges_df = get_resource(inputs, '1')
+        except:
+            learning_df, graphs, nodeIDs, task = dsbox_graphs.graph_utils._jhu_load(inputs)
+            with open('sdne_log.csv','w') as f:
+                f.write(str(type(graphs)))
+                f.write(str(len(graphs)))
+                try:
+                    f.write(str(type(graphs[0])))
+                except:
+                    pass
+                try:
+                    f.write(graphs)
+                except:
+                    pass
+            edges_df = graphs[0]
+            if isinstance(edges_df, networkx.Graph):
+                edges = np.array(edges_df.edges)
+                sources = container.DataFrame(edges[:,0])
+                dests = container.DataFrame(edges[:,1])
+            else:
+                # placeholder.  likely won't work
+                edges_df = container.DataFrame(edges_df)
+        #for i in inputs.items():
 
-        try:
-            print("LEANRING DF ", learning_df)
-            print("NODES DF ", nodes_df)
-            print("EDGES DF ", edges_df)
-        except:
-            pass
-        
+
+                
         self.node_encode = LabelEncoder()
-        sources, dests = self._get_source_dest(edges_df)
-        sources = sources.astype(np.int32)
-        dests = dests.astype(np.int32)
+        try:
+            sources, dests = self._get_source_dest(edges_df)
+        except:
+            # won't run if loading networkx via jhu_load
+            pass
+        sources = sources.astype(np.int32).values
+        dests = dests.astype(np.int32).values
+
         to_fit = np.sort(np.concatenate([sources.values,dests.values], axis = -1).astype(np.int32).ravel())
         
         self.node_encode.fit(to_fit) #nodes_df[id_col].values)
