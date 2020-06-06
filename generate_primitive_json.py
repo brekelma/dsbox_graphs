@@ -19,7 +19,7 @@ arguments = parser.parse_args()
 
 PREFIX = 'd3m.primitives.'
 PRIMITIVES = [(p, config) for p in [
-        #'feature_construction.sdne.DSBOX',
+        'feature_construction.sdne.DSBOX',
         #'data_transformation.graph_to_edge_list.DSBOX',
         'feature_construction.gcn_mixhop.DSBOX'
 ]
