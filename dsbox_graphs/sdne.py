@@ -4,8 +4,9 @@ import typing
 import networkx
 import numpy as np
 
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+import tensorflow as tf #.compat.v1
+#tf.disable_v2_behavior()
+import tensorflow.keras as keras
 #from GEM.gem.embedding import node2vec
 from dsbox_graphs.GEM.gem.embedding import sdne
 #from GEM.gem.embedding import sdne_utils
@@ -222,6 +223,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         "description": "Structural Deep Network Embedding (Wang et al 2016): unsupervised network embedding using autoencoders to preserve first order proximity (i.e. connected nodes have similar embeddings) and second order proximity (i.e. nodes with similar neighbors have similar embeddings).  Hyperparam alpha controls weight of 1st order proximity loss (L2 norm of embedding difference), beta controls second-order loss (reconstruction of adjacency matrix row, matrix B in Wang et al).  Expects list of [learning_df, nodes_df, edges_df] as input (e.g. by running common_primitives.normalize_graphs + data_tranformation.graph_to_edge_list.DSBOX)",
         "python_path": "d3m.primitives.feature_construction.sdne.DSBOX",
         "original_python_path": "sdne.SDNE",
+        "can_use_gpus": True,
         "source": {
             "name": "ISI",
             "contact": "mailto:brekelma@usc.edu",

@@ -4,16 +4,16 @@ import typing
 import numpy as np
 import pdb
 
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
-import tensorflow.keras as keras
+import tensorflow as tf
+#import tensorflow as tf#
+import tensorflow.keras as keras #compat.v1. 
 import pandas as pd
 import copy 
 import importlib
 
 import keras.objectives
 import keras.backend as K
-#from sklearn import preprocessing
+from sklearn import preprocessing
 import tempfile
 import scipy.sparse
 from scipy.sparse import csr_matrix
@@ -38,7 +38,10 @@ from d3m.primitive_interfaces.supervised_learning import SupervisedLearnerPrimit
 
 import dsbox_graphs.config_ as cfg_
 
+#tf.logging.set_verbosity(tf.logging.ERROR)
 
+#tf.disable_v2_behavior()
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 Input = container.Dataset 
 Output = container.DataFrame
@@ -334,23 +337,24 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 """
 
                 metadata = PrimitiveMetadata({
-                                "schema": "v0",
-                                "id": "48572851-b86b-4fda-961d-f3f466adb58e",
-                                "version": "1.0.0",
-                                "name": "Mixhop GCN",
-                                "description": "Graph convolutional neural networks (GCN) as in Kipf & Welling 2016, generalized to k-hop edge links via Abu-el-Haija et al 2019: https://arxiv.org/abs/1905.00067 (GCN recovered for k = 1).  In particular, learns weight transformation of feature matrix X for various powers of adjacency matrix, i.e. nonlinearity(A^k X W), and concatenates into an embedding layer.  Feature input X may be of the form: identity matrix (node_id) w/ node features appended as columns.  Specify order using 'adjacency_order' hyperparam.  Expects list of [learning_df, edges_df, edges_df] as input (e.g. by running common_primitives.normalize_graphs + data_tranformation.graph_to_edge_list.DSBOX)",
-                                "python_path": "d3m.primitives.feature_construction.gcn_mixhop.DSBOX",
-                                "original_python_path": "gcn_mixhop.GCN",
-                                "source": {
-                                                "name": "ISI",
-                                                "contact": "mailto:brekelma@usc.edu",
-                                                "uris": [ "https://github.com/brekelma/dsbox_graphs" ]
-                                },
-                                "installation": [ cfg_.INSTALLATION ],
-                                # See possible types here :https://gitlab.com/datadrivendiscovery/d3m/blob/devel/d3m/metadata/schemas/v0/definitions.json
-                                "algorithm_types": ["CONVOLUTIONAL_NEURAL_NETWORK"],
-                                "primitive_family": "FEATURE_CONSTRUCTION",
-                                "hyperparams_to_tune": ["dimension", "adjacency_order"]
+                        "schema": "v0",
+                        "id": "48572851-b86b-4fda-961d-f3f466adb58e",
+                        "version": "1.0.0",
+                        "name": "Mixhop GCN",
+                        "description": "Graph convolutional neural networks (GCN) as in Kipf & Welling 2016, generalized to k-hop edge links via Abu-el-Haija et al 2019: https://arxiv.org/abs/1905.00067 (GCN recovered for k = 1).  In particular, learns weight transformation of feature matrix X for various powers of adjacency matrix, i.e. nonlinearity(A^k X W), and concatenates into an embedding layer.  Feature input X may be of the form: identity matrix (node_id) w/ node features appended as columns.  Specify order using 'adjacency_order' hyperparam.  Expects list of [learning_df, edges_df, edges_df] as input (e.g. by running common_primitives.normalize_graphs + data_tranformation.graph_to_edge_list.DSBOX)",
+                        "python_path": "d3m.primitives.feature_construction.gcn_mixhop.DSBOX",
+                        "original_python_path": "gcn_mixhop.GCN",
+                        "can_use_gpus": True,
+                        "source": {
+                                        "name": "ISI",
+                                        "contact": "mailto:brekelma@usc.edu",
+                                        "uris": [ "https://github.com/brekelma/dsbox_graphs" ]
+                        },
+                        "installation": [ cfg_.INSTALLATION ],
+                        # See possible types here :https://gitlab.com/datadrivendiscovery/d3m/blob/devel/d3m/metadata/schemas/v0/definitions.json
+                        "algorithm_types": ["CONVOLUTIONAL_NEURAL_NETWORK"],
+                        "primitive_family": "FEATURE_CONSTRUCTION",
+                        "hyperparams_to_tune": ["dimension", "adjacency_order"]
                 })
 
                 def __init__(self, *, hyperparams : GCN_Hyperparams) -> None:
