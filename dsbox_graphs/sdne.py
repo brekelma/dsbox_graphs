@@ -13,7 +13,7 @@ from dsbox_graphs.GEM.gem.embedding import sdne
 import keras.models
 import tempfile
 from scipy.sparse import csr_matrix
-from sklearn.preprocessing.label import LabelEncoder
+from sklearn.preprocessing.label import LabelEncoder as skLabelEncoder
 
 from d3m.base import utils as base_utils
 
@@ -141,7 +141,7 @@ class SDNE_Params(params.Params):
     fitted: typing.Union[bool, None]
     #model: typing.Union[keras.models.Model, None]
     model: typing.Union[sdne.SDNE, None]
-    node_encode: typing.Union[LabelEncoder, None]
+    node_encode: typing.Union[skLabelEncoder, None]
 # SDNE takes embedding dimension (d), 
 # seen edge reconstruction weight (beta), 
 # first order proximity weight (alpha), 
@@ -303,7 +303,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
         except:
             pass
         
-        self.node_encode = LabelEncoder()
+        self.node_encode = skLabelEncoder()
         sources, dests = self._get_source_dest(edges_df)
         sources = sources.astype(np.int32)
         dests = dests.astype(np.int32)
