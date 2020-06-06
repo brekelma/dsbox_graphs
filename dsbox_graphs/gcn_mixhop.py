@@ -18,7 +18,7 @@ import tempfile
 import scipy.sparse
 from scipy.sparse import csr_matrix
 from keras.utils import to_categorical
-from sklearn.preprocessing.label import LabelEncoder as skLabelEncoder
+from sklearn.preprocessing import LabelEncoder
 import keras.models
 
 from common_primitives import utils
@@ -383,7 +383,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
 
                 
-                        self.node_encode = skLabelEncoder()
+                        self.node_encode = LabelEncoder()
 
                         sources, dests = self._get_source_dest(edges_df)
                         sources = sources.astype(np.int32)
@@ -449,7 +449,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         try:
                                         self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
                         except:
-                                        self.label_encode = skLabelEncoder()
+                                        self.label_encode = LabelEncoder()
                                         self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values), num_classes = np.unique(targets.values).shape[0])
                                 
 
