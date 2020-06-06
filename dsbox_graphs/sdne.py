@@ -13,7 +13,7 @@ from dsbox_graphs.GEM.gem.embedding import sdne
 import keras.models
 import tempfile
 from scipy.sparse import csr_matrix
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing.label import LabelEncoder
 
 from d3m.base import utils as base_utils
 

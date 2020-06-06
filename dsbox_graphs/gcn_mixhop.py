@@ -18,7 +18,7 @@ import tempfile
 import scipy.sparse
 from scipy.sparse import csr_matrix
 from keras.utils import to_categorical
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing.label import LabelEncoder
 import keras.models
 
 from common_primitives import utils
