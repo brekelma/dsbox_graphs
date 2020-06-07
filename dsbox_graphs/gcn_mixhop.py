@@ -4,6 +4,7 @@ import typing
 import numpy as np
 import pdb
 
+import gcn_utils as u
 import tensorflow as tf
 #import tensorflow as tf#
 import tensorflow.keras as keras #compat.v1. 
@@ -18,7 +19,7 @@ import tempfile
 import scipy.sparse
 from scipy.sparse import csr_matrix
 from keras.utils import to_categorical
-from sklearn.preprocessing import LabelEncoder
+from sklearen.preprocessing import LabelEncoder
 import keras.models
 
 from common_primitives import utils
@@ -45,186 +46,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 Input = container.Dataset 
 Output = container.DataFrame
-
-
-def dot(x, y, sparse=False):
-        """Wrapper for tf.matmul (sparse vs dense)."""
-        if sparse:
-                try:
-                        res = tf.sparse.sparse_dense_matmul(x, y) 
-                except Exception as e:
-                        try:
-                                res = tf.matmul(x, y, a_is_sparse = True)
-                        except:
-                                res = tf.matmul(x, y)
-                                #x = tf.contrib.layers.dense_to_sparse(x)
-                                #res = tf.sparse_tensor_dense_matmul(x, y)
-        else:
-                        res = tf.matmul(x, y) #K.dot(x,y) 
-        return res
-
-def sparse_exponentiate(inputs, exponent = 1, sparse = False):
-        adj = inputs[0]
-        x = inputs[1]
-        res = x
-        if exponent == 0:
-                        return res
-
-        for k in range(exponent):
-                        res = dot(adj, res, sparse = sparse)
-        return res
-
-def identity(x_true, x_pred):
-                return x_pred
-
-# selects only those 
-def semi_supervised_slice(inputs, first = None):
-        # input as [tensor, indices_to_select]
-        if isinstance(inputs, list):
-                        tensor = inputs[0]
-                        inds = inputs[-1]
-                        inds = tf.squeeze(inds)
-                        
-        else:
-                        tensor = inputs
-                        inds = np.arange(first, dtype = np.float32)
-        try:
-                        sliced = tf.gather(tensor, inds, axis = 0)
-        except:
-                        sliced = tf.gather(tensor, tf.cast(inds, tf.int32), axis = 0)
-        #sliced.set_shape([None, sliced.get_shape()[-1]])
-        #return tf.cast(sliced, tf.float32)
-        return tf.cast(tf.reshape(sliced, [-1, tf.shape(input=tensor)[-1]]), tf.float32)
-
-def assign_scattered(inputs):
-        # "Undo" slice.  Used on loss function to give calculated loss for supervised examples, else 0 
-        # inputs = [loss_on_slices, shape_ref, indices]
-        slice_loss = inputs[0]
-        shape_ref = inputs[1]
-        # e.g. loss goes in batch dim 0,2,4,6,8, inds.shape = (5,1)
-        inds = tf.expand_dims(tf.cast(inputs[-1], tf.int32), -1)
-        full_loss = tf.scatter_nd(inds, 
-                                        slice_loss, 
-                                        shape = [tf.shape(input=shape_ref)[0]])
-        return full_loss #tf.reshape(full_loss, (-1,))
-
-
-def import_loss(inputs, function = None, first = None):
-        if isinstance(function, str):
-                        import importlib
-                        mod = importlib.import_module('keras.objectives')
-                        function = getattr(mod, function)
-        try:
-                        return function(inputs[0], inputs[-1]) if function is not None else inputs
-        except:
-                        inputs[0] = tf.gather(inputs[0], np.arange(first))
-                        return function(inputs[0], inputs[-1]) if function is not None else inputs
-
-
-
-
-def _update_metadata(metadata: DataMetadata, resource_id: SelectorSegment) -> DataMetadata:
-        resource_metadata = dict(metadata.query((resource_id,)))
-
-        if 'structural_type' not in resource_metadata or not issubclass(resource_metadata['structural_type'], container.DataFrame):
-                raise TypeError("The Dataset resource is not a DataFrame, but \"{type}\".".format(
-                        type=resource_metadata.get('structural_type', None),
-                ))
-
-        resource_metadata.update(
-                {
-                        'schema': CONTAINER_SCHEMA_VERSION,
-                },
-        )
-
-        new_metadata = DataMetadata(resource_metadata)
-
-        new_metadata = metadata.copy_to(new_metadata, (resource_id,))
-
-        # Resource is not anymore an entry point.
-        new_metadata = new_metadata.remove_semantic_type((), 'https://metadata.datadrivendiscovery.org/types/DatasetEntryPoint')
-
-        return new_metadata
-
-def get_resource(inputs, resource_name):
-        _id, _df = base_utils.get_tabular_resource(inputs, resource_name)
-        _df.metadata = _update_metadata(inputs.metadata, _id)
-        return _id, _df
-
-def get_columns_not_of_type(df, semantic_types): 
-        # NOTE: Fails quietly in case of no metadata (doesn't remove columns)
-
-        columns = df.metadata.list_columns_with_semantic_types(semantic_types)
-
-        def can_use_column(column_index: int) -> bool:
-                return column_index not in columns
-
-        # hyperparams['use_columns'], hyperparams['exclude_columns']
-        columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) 
-
-        if not columns_to_use:
-                        raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(
-                                        semantic_types=semantic_types,
-                        ))
-
-
-        return df.select_columns(columns_to_use)
-
-
-def get_columns_of_type(df, semantic_types): 
-        columns = df.metadata.list_columns_with_semantic_types(semantic_types)
-
-        def can_use_column(column_index: int) -> bool:
-                return column_index in columns
-
-        # hyperparams['use_columns'], hyperparams['exclude_columns']
-        columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) 
-
-        if not columns_to_use:
-                        raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(
-                                        semantic_types=semantic_types,
-                        ))
-
-
-        return df.select_columns(columns_to_use)
-
-def make_keras_pickleable():
-                def __getstate__(self):
-                                model_str = ""
-                                model_weights = ""
-                                with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
-                                                #self.save(fd.name)#, overwrite=True)
-                                                keras.models.save_model(self, fd.name, overwrite=True)
-                                                model_str = fd.read()
-                                with tempfile.NamedTemporaryFile(suffix='.h5', delete=True) as fd:
-                                                self.save_weights(fd.name)
-                                                model_weights = fd.read()
-                                d = {'model_str': model_str, 'model_weights': model_weights}
-                                return d
-
-                def __setstate__(self, state):
-                                with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
-                                                fd.write(state['model_str'])
-                                                fd.flush()
-                                                model = keras.models.load_model(fd.name, custom_objects = 
-                                                                {'tf': tf, 'identity': identity, #'GCN_Layer': GCN_Layer,
-                                                                'assign_scattered': assign_scattered})
-                                                #model.load_weights(
-                                with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=True) as fd:
-                                                fd.write(state['model_weights'])
-                                                fd.flush()
-                                                model.load_weights(fd.name)
-                                self.__dict__ = model.__dict__
-                                
-                
-                #cls = Sequential
-                #cls.__getstate__ = __getstate__
-                #cls.__setstate__ = __setstate__
-
-                cls = keras.models.Model
-                cls.__getstate__ = __getstate__
-                cls.__setstate__ = __setstate__
-
 
 class GCN_Params(params.Params):
 
@@ -378,7 +199,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/TrueTarget')
 
-                        features_df = get_columns_not_of_type(learning_df, target_types)
+                        features_df = u.get_columns_not_of_type(learning_df, target_types)
                         features_df = features_df.iloc[:, 2:] if 'nodeID' in features_df.columns and 'd3mIndex' in features_df.columns else features_df
 
 
@@ -433,7 +254,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                         target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/TrueTarget')
-                        targets = get_columns_of_type(learning_df, target_types)
+                        targets = u.get_columns_of_type(learning_df, target_types)
         
                         self._parse_data(learning_df, targets, node_subset = node_subset)
                         self.fitted = False
@@ -467,23 +288,23 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 def _parse_inputs(self, inputs : Input):
                         # Input is a dataset now
                         try:
-                                learning_id, learning_df = get_resource(inputs, 'learningData')
+                                learning_id, learning_df =u.get_resource(inputs, 'learningData')
                         except:
                                 pass
                         try: # resource id, resource
-                                nodes_id, nodes_df = get_resource(inputs, '0_nodes')
+                                nodes_id, nodes_df = u.get_resource(inputs, '0_nodes')
                         except:
                                 try:
-                                        nodes_id, nodes_df = get_resource(inputs, 'nodes')
+                                        nodes_id, nodes_df = u.get_resource(inputs, 'nodes')
                                 except:
                                         nodes_df = learning_df
                         try:
-                                edges_id, edges_df = get_resource(inputs, '0_edges')
+                                edges_id, edges_df = u.get_resource(inputs, '0_edges')
                         except:
                                 try:
-                                        edges_id, edges_df = get_resource(inputs, 'edges')
+                                        edges_id, edges_df = u.get_resource(inputs, 'edges')
                                 except:
-                                        edges_id, edges_df = get_resource(inputs, '1')
+                                        edges_id, edges_df = u.get_resource(inputs, '1')
 
                         return learning_df, nodes_df, edges_df
 
@@ -497,7 +318,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                                                                 'https://metadata.datadrivendiscovery.org/types/MultiEdgeSource')
 
                         
-                                sources = get_columns_of_type(edges_df, source_types)
+                                sources = u.get_columns_of_type(edges_df, source_types)
                         
                                 if dest_types is None:
                                                 dest_types = ('https://metadata.datadrivendiscovery.org/types/EdgeTarget',
@@ -505,7 +326,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                                                                                 'https://metadata.datadrivendiscovery.org/types/UndirectedEdgeTarget',
                                                                                                 'https://metadata.datadrivendiscovery.org/types/SimpleEdgeTarget',
                                                                                                 'https://metadata.datadrivendiscovery.org/types/MultiEdgeTarget')
-                                dests = get_columns_of_type(edges_df, dest_types)
+                                dests = u.get_columns_of_type(edges_df, dest_types)
                                 
                                 return sources, dests
 
@@ -641,7 +462,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
                                                                           'https://metadata.datadrivendiscovery.org/types/ConstructedAttribute')
 
-                                        features = get_columns_of_type(edges_df, semantic_types).values.astype(np.float32)
+                                        features = u.get_columns_of_type(edges_df, semantic_types).values.astype(np.float32)
                                         
                                         if tensor:
                                                         features = tf.convert_to_tensor(value=features)
@@ -775,12 +596,12 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         
                         
                         self.fitted = True
-                        make_keras_pickleable()
+                        u.make_keras_pickleable()
                         return CallResult(None, True, 1)
 
                 
                 def produce(self, *, inputs : Input, outputs : Output, timeout : float = None, iterations : int = None) -> CallResult[Output]:
-                        make_keras_pickleable()
+                        u.make_keras_pickleable()
                         if self.fitted:
                                 # embed ALL (even unlabelled examples)
                                 learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
@@ -789,7 +610,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                                 target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/TrueTarget')
-                                features_df = get_columns_not_of_type(learning_df, target_types)
+                                features_df = u.get_columns_not_of_type(learning_df, target_types)
                                 features_df = features_df.iloc[:, 2:] if 'nodeID' in features_df.columns and 'd3mIndex' in features_df.columns else features_df
                                 #features_df = learning_df.remove_columns([learning_df.columns.get_loc(c) for c in learning_df.columns if 'node' in c and 'id' in c.lower() or 'd3mIndex' in c])
                                 
@@ -822,7 +643,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/TrueTarget')
                                 
-                                targets =  get_columns_of_type(learning_df, target_types)
+                                targets = u.get_columns_of_type(learning_df, target_types)
                                 
                                         
                                 self._parse_data(learning_df, targets, node_subset = node_subset)
@@ -857,7 +678,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         'https://metadata.datadrivendiscovery.org/types/SuggestedTarget')
 
                         learn_df = d3m_DataFrame(learning_df, generate_metadata = True)
-                        learn_df = get_columns_not_of_type(learn_df, target_types)
+                        learn_df = u.get_columns_not_of_type(learn_df, target_types)
                         
                         
                         result_df = d3m_DataFrame(result, generate_metadata = True)
