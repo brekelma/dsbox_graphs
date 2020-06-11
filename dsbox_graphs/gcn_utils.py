@@ -1,6 +1,10 @@
 import tensorflow as tf
+import tensorflow.keras as keras
 import numpy as np
+from d3m.metadata.base import Metadata, DataMetadata, SelectorSegment, ALL_ELEMENTS
 from d3m.base import utils as base_utils
+import d3m.container as container
+from d3m.metadata.base import CONTAINER_SCHEMA_VERSION, DataMetadata, ALL_ELEMENTS, SelectorSegment
 
 def dot(x, y, sparse=False):
         """Wrapper for tf.matmul (sparse vs dense)."""
@@ -51,29 +55,52 @@ def semi_supervised_slice(inputs, first = None):
         #return tf.cast(sliced, tf.float32)
         return tf.cast(tf.reshape(sliced, [-1, tf.shape(input=tensor)[-1]]), tf.float32)
 
-def assign_scattered(inputs):
+def assign_scattered(inputs, add_to_zeros=False):
         # "Undo" slice.  Used on loss function to give calculated loss for supervised examples, else 0 
         # inputs = [loss_on_slices, shape_ref, indices]
         slice_loss = inputs[0]
         shape_ref = inputs[1]
         # e.g. loss goes in batch dim 0,2,4,6,8, inds.shape = (5,1)
-        inds = tf.expand_dims(tf.cast(inputs[-1], tf.int32), -1)
-        full_loss = tf.scatter_nd(inds, 
-                                        slice_loss, 
-                                        shape = [tf.shape(input=shape_ref)[0]])
+        inds = tf.cast(inputs[-1], tf.int32) #tf.expand_dims(, -1)
+        inds = tf.expand_dims(inds, -1)
+
+        # scatter_nd defaults to zeros
+        # full_loss = tf.scatter_nd(inds, 
+        #                         slice_loss, 
+        #                         shape = [tf.shape(input=shape_ref)[0]])
+        # import IPython
+        # IPython.embed()
+        # full_loss = tf.tensor_scatter_nd_add(tf.zeros(tf.shape(shape_ref), slice_loss.dtype), inds, slice_loss)
+
+        if add_to_zeros:
+                full_loss = tf.scatter_nd(inds, 
+                        slice_loss, 
+                        tf.shape(shape_ref))
+        else:
+                full_loss = tf.tensor_scatter_nd_add(
+                        shape_ref, inds, slice_loss, name='full_zeros_output'
+                        )
+
         return full_loss #tf.reshape(full_loss, (-1,))
 
 
-def import_loss(inputs, function = None, first = None):
+def import_loss(inputs, function = None, first = None, flatten=False):
         if isinstance(function, str):
                         import importlib
-                        mod = importlib.import_module('keras.objectives')
+                        mod = importlib.import_module('keras.losses')
                         function = getattr(mod, function)
-        try:
-                        return function(inputs[0], inputs[-1]) if function is not None else inputs
-        except:
-                        inputs[0] = tf.gather(inputs[0], np.arange(first))
-                        return function(inputs[0], inputs[-1]) if function is not None else inputs
+        #try:
+        if not flatten:
+                return function(inputs[0], inputs[-1])
+        else:
+                input_0 = tf.reshape(inputs[0], [-1,1])
+                input_1 = tf.reshape(inputs[-1], [-1,1])
+                f = tf.reshape(function(input_0, input_1), tf.shape(inputs[0]))
+                return f  #if function is not None else inputs
+        #return function(inputs[0], inputs[-1]) if function is not None else inputs
+        #except:
+        #                inputs[0] = tf.gather(inputs[0], np.arange(first))
+        #                return function(inputs[0], inputs[-1]) if function is not None else inputs
 
 
 def _update_metadata(metadata: DataMetadata, resource_id: SelectorSegment) -> DataMetadata:
@@ -114,6 +141,14 @@ def get_columns_not_of_type(df, semantic_types):
 
     # hyperparams['use_columns'], hyperparams['exclude_columns']
     columns_to_use, columns_not_to_use = base_utils.get_columns_to_use(df.metadata, [], [], can_use_column) 
+
+#     print()
+#     print()
+#     print("LIST COLUMNS to USE (not of type)")
+#     print(columns_to_use)
+#     print(columns_not_to_use)
+#     print()
+#     print()
 
     if not columns_to_use:
                     raise ValueError("Input data has no columns matching semantic types: {semantic_types}".format(

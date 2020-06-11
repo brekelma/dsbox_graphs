@@ -3,6 +3,7 @@ import sys
 import typing
 import networkx
 import numpy as np
+import dsbox_graphs.gcn_utils as u
 
 import tensorflow as tf #.compat.v1
 #tf.disable_v2_behavior()
@@ -263,45 +264,35 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                                 'https://metadata.datadrivendiscovery.org/types/SimpleEdgeSource',
                                 'https://metadata.datadrivendiscovery.org/types/MultiEdgeSource')
 
-    
-        sources = get_columns_of_type(edges_df, source_types)
-    
+
+        #sources = get_columns_of_type(edges_df, source_types)
+        #if len(sources) == 0: #sources.values.shape[0]==0:
+        sources = d3m_DataFrame(edges_df.loc[:,'node1'])
+
+
         if dest_types is None:
                 dest_types = ('https://metadata.datadrivendiscovery.org/types/EdgeTarget',
                                         'https://metadata.datadrivendiscovery.org/types/DirectedEdgeTarget',
                                         'https://metadata.datadrivendiscovery.org/types/UndirectedEdgeTarget',
                                         'https://metadata.datadrivendiscovery.org/types/SimpleEdgeTarget',
                                         'https://metadata.datadrivendiscovery.org/types/MultiEdgeTarget')
-        dests = get_columns_of_type(edges_df, dest_types)
-        
+        #dests = get_columns_of_type(edges_df, dest_types)
+        #if len(dests)==0: #dests.values.shape[0]==0:
+        dests= d3m_DataFrame(edges_df.loc[:,'node2'])
         return sources, dests
 
-    def _parse_inputs(self, inputs : Input, return_all = False):
-        try:
-            learning_id, learning_df = get_resource(inputs, 'learningData')
-        except:
-            pass
-        try: # resource id, resource
-            nodes_id, nodes_df = get_resource(inputs, '0_nodes')
-        except:
-            try:
-                nodes_id, nodes_df = get_resource(inputs, 'nodes')
-            except:
-                nodes_df = learning_df
-        try:
-            edges_id, edges_df = get_resource(inputs, '0_edges')
-        except:
-            try:
-                edges_id, edges_df = get_resource(inputs, 'edges')
-            except:
-                edges_id, edges_df = get_resource(inputs, '1')
 
-        try:
-            print("LEANRING DF ", learning_df)
-            print("NODES DF ", nodes_df)
-            print("EDGES DF ", edges_df)
-        except:
-            pass
+    def _parse_inputs(self, inputs : Input, return_all = False):
+        # Input is a dataset now... Don't really need learning_df, edge_df
+        #learning_id, learning_df =u.get_resource(inputs, 'learningData')
+        learning_df = inputs['learningData']
+        edges_df = inputs['1']
+        nodes_df = inputs['2']
+        #edges_id, edges_df = u.get_resource(inputs, '1')
+        #nodes_id, nodes_df = u.get_resource(inputs, '2')
+                
+        #return learning_df, nodes_df, edges_df
+
         
         self.node_encode = LabelEncoder()
         sources, dests = self._get_source_dest(edges_df)
@@ -384,6 +375,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
 
 
         target_types = ['https://metadata.datadrivendiscovery.org/types/TrueTarget', 'https://metadata.datadrivendiscovery.org/types/SuggestedTarget']
+        
         if self.hyperparams['return_list']:
             result_np = container.ndarray(result, generate_metadata = True)
             return_list = d3m_List([result_np, inputs[1], inputs[2]], generate_metadata = True)        
