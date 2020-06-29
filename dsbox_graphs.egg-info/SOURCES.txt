@@ -3,12 +3,12 @@ setup.py
 dsbox_graphs/__init__.py
 dsbox_graphs/config_.py
 dsbox_graphs/gcn_mixhop.py
+dsbox_graphs/gcn_utils.py
 dsbox_graphs/sdne.py
 dsbox_graphs.egg-info/PKG-INFO
 dsbox_graphs.egg-info/SOURCES.txt
 dsbox_graphs.egg-info/dependency_links.txt
 dsbox_graphs.egg-info/entry_points.txt
-dsbox_graphs.egg-info/requires.txt
 dsbox_graphs.egg-info/top_level.txt
 dsbox_graphs/GEM/__init__.py
 dsbox_graphs/GEM/setup.py

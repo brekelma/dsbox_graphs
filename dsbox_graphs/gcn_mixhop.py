@@ -31,6 +31,7 @@ from d3m.base import utils as base_utils
 import d3m.metadata.hyperparams as hyperparams
 import d3m.metadata.params as params
 
+from d3m.primitives.schema_discovery.profiler import Common as Profiler
 from d3m.container import List as d3m_List
 from d3m.container import DataFrame as d3m_DataFrame
 from d3m.metadata.base import PrimitiveMetadata
@@ -39,6 +40,7 @@ from d3m.primitive_interfaces.base import CallResult, MultiCallResult
 from d3m.primitive_interfaces.supervised_learning import SupervisedLearnerPrimitiveBase
 #import IPython
 
+from collections import defaultdict
 import dsbox_graphs.config_ as cfg_
 
 #tf.logging.set_verbosity(tf.logging.ERROR)
@@ -54,7 +56,7 @@ class TF2FullModel(tf.keras.Model):
         def __init__(self, args):
                 super(TF2FullModel, self).__init__()
                 self.args = args
-                from collections import defaultdict
+                
                 self.pre_act_convs = defaultdict(list) #[[]*len(args._units)] # nested list (layers (i.e. _units) * mix_hops in each layer)
                 self.act_layers = defaultdict(list) #[[]*len(args._units)]
                 
@@ -65,20 +67,17 @@ class TF2FullModel(tf.keras.Model):
                                 else:
                                         h_i_k = args._units[h_i]
 
-                                try:
-                                        # to be called on ([A,H])
-                                        # EACH layer takes as input A^k * H for k = mixing order (i.e. 3rd degree connection neighborhood for A^3)
-                                        pre_w = keras.layers.Lambda(u.sparse_exponentiate, name ='pre_w_exp_'+str(k)+'_'+str(h_i), arguments = {'exponent': k, 'sparse': args._sparse})
-                                        self.pre_act_convs[h_i].append(pre_w) # each 
-                                        
-                                        # to be called on pre_w
-                                        act = keras.layers.Dense(h_i_k, activation = args._act, name='w'+str(k)+'_'+str(h_i))
-                                        # EACH layer, EACH adjacency has an encoding weight vector
-                                        self.act_layers[h_i].append(act)
-                                except Exception as e:
-                                        print(e)
-                                        import IPython
-                                        IPython.embed()
+                               
+                                # to be called on ([A,H])
+                                # EACH layer takes as input A^k * H for k = mixing order (i.e. 3rd degree connection neighborhood for A^3)
+                                pre_w = keras.layers.Lambda(u.sparse_exponentiate, name ='pre_w_exp_'+str(k)+'_'+str(h_i), arguments = {'exponent': k, 'sparse': args._sparse})
+                                self.pre_act_convs[h_i].append(pre_w) # each 
+                                
+                                # to be called on pre_w
+                                act = keras.layers.Dense(h_i_k, activation = args._act, name='w'+str(k)+'_'+str(h_i))
+                                # EACH layer, EACH adjacency has an encoding weight vector
+                                self.act_layers[h_i].append(act)
+      
                 
                 self.extra_fc_layer = keras.layers.Dense(args._extra_fc, activation = args._act) \
                        if (args._extra_fc is not None and args._extra_fc > 0) else None
@@ -116,6 +115,7 @@ class TF2FullModel(tf.keras.Model):
                 print()
                 #print('y pred slice : ' , self.y_pred_slice)
                 print()
+                # RETURNS Embedding, Y Pred
                 return current_H, y_pred
                 #return current_H
 
@@ -123,113 +123,113 @@ class TF2FullModel(tf.keras.Model):
         #         return None #[ tf.shape(self.current_H), tf.shape(self.y_pred_slice)]
 
 
-class TF2Model(keras.models.Model):
-        def __init__(self, args):
-                super(TF2Model, self).__init__()
-                self.args = args
-                # args object
+# class TF2Model(keras.models.Model):
+#         def __init__(self, args):
+#                 super(TF2Model, self).__init__()
+#                 self.args = args
+#                 # args object
         
-                self.encoder = TF2Encoder(args)
+#                 self.encoder = TF2Encoder(args)
                 
-                #self.extra_fc_layer = keras.layers.Dense(args._extra_fc, activation = args._act) \
-                #        if (args._extra_fc is not None and args._extra_fc > 0) else None
+#                 #self.extra_fc_layer = keras.layers.Dense(args._extra_fc, activation = args._act) \
+#                 #        if (args._extra_fc is not None and args._extra_fc > 0) else None
                 
-                label_act = 'softmax' if args._label_unique > 1 else 'sigmoid'
-                self.y_pred = keras.layers.Dense(args._label_unique, activation = label_act, name = 'y_pred')#(H)
+#                 label_act = 'softmax' if args._label_unique > 1 else 'sigmoid'
+#                 self.y_pred = keras.layers.Dense(args._label_unique, activation = label_act, name = 'y_pred')#(H)
                 
-                #self.predictor = TF2Decoder(args)
+#                 #self.predictor = TF2Decoder(args)
 
 
-        def call(self, inputs):
-                #A, H, y_true, inds
-                A = inputs[0]
-                H = inputs[1]
-                y_true = inputs[2]
-                inds = inputs[3]
-                features = self.encoder([A,H])
+#         def call(self, inputs):
+#                 #A, H, y_true, inds
+#                 A = inputs[0]
+#                 H = inputs[1]
+#                 y_true = inputs[2]
+#                 inds = inputs[3]
+#                 features = self.encoder([A,H])
                 
-                #if self.extra_fc_layer is not None:
-                #        x = self.extra_fc_layer(features)
-                #        print("X DIMENSIONS ", x)
-                predictions= self.y_pred(features) #x if self.extra_fc_layer is not None else features)
-                #predictions = self.predictor(features) # others saved for loss: [features, y_true, inds])
-                return features, predictions
+#                 #if self.extra_fc_layer is not None:
+#                 #        x = self.extra_fc_layer(features)
+#                 #        print("X DIMENSIONS ", x)
+#                 predictions= self.y_pred(features) #x if self.extra_fc_layer is not None else features)
+#                 #predictions = self.predictor(features) # others saved for loss: [features, y_true, inds])
+#                 return features, predictions
 
 
-class TF2Encoder(keras.layers.Layer):
-        def __init__(self, args):
-                super(TF2Encoder, self).__init__()
-                self.args = args
-                from collections import defaultdict
-                self.pre_act_convs = defaultdict(list) #[[]*len(args._units)] # nested list (layers (i.e. _units) * mix_hops in each layer)
-                self.act_layers = defaultdict(list) #[[]*len(args._units)]
+# class TF2Encoder(keras.layers.Layer):
+#         def __init__(self, args):
+#                 super(TF2Encoder, self).__init__()
+#                 self.args = args
+#                 from collections import defaultdict
+#                 self.pre_act_convs = defaultdict(list) #[[]*len(args._units)] # nested list (layers (i.e. _units) * mix_hops in each layer)
+#                 self.act_layers = defaultdict(list) #[[]*len(args._units)]
                 
-                for h_i in range(len(args._units)):
-                        for k in range(args._mix_hops+1): 
-                                if isinstance(args._units[h_i], list) or isinstance(args._units[h_i], np.ndarray):
-                                        h_i_k = args._units[h_i][k]
-                                else:
-                                        h_i_k = args._units[h_i]
+#                 for h_i in range(len(args._units)):
+#                         for k in range(args._mix_hops+1): 
+#                                 if isinstance(args._units[h_i], list) or isinstance(args._units[h_i], np.ndarray):
+#                                         h_i_k = args._units[h_i][k]
+#                                 else:
+#                                         h_i_k = args._units[h_i]
 
-                                try:
-                                        # to be called on ([A,H])
-                                        # EACH layer takes as input A^k * H for k = mixing order (i.e. 3rd degree connection neighborhood for A^3)
-                                        pre_w = keras.layers.Lambda(u.sparse_exponentiate, name ='pre_w_exp_'+str(k)+'_'+str(h_i), arguments = {'exponent': k, 'sparse': args._sparse})
-                                        self.pre_act_convs[h_i].append(pre_w) # each 
+#                                 try:
+#                                         # to be called on ([A,H])
+#                                         # EACH layer takes as input A^k * H for k = mixing order (i.e. 3rd degree connection neighborhood for A^3)
+#                                         pre_w = keras.layers.Lambda(u.sparse_exponentiate, name ='pre_w_exp_'+str(k)+'_'+str(h_i), arguments = {'exponent': k, 'sparse': args._sparse})
+#                                         self.pre_act_convs[h_i].append(pre_w) # each 
                                         
-                                        # to be called on pre_w
-                                        act = keras.layers.Dense(h_i_k, activation = args._act, name='w'+str(k)+'_'+str(h_i))
-                                        # EACH layer, EACH adjacency has an encoding weight vector
-                                        self.act_layers[h_i].append(act)
-                                except Exception as e:
-                                        print(e)
-                                        import IPython
-                                        IPython.embed()
+#                                         # to be called on pre_w
+#                                         act = keras.layers.Dense(h_i_k, activation = args._act, name='w'+str(k)+'_'+str(h_i))
+#                                         # EACH layer, EACH adjacency has an encoding weight vector
+#                                         self.act_layers[h_i].append(act)
+#                                 except Exception as e:
+#                                         print(e)
+#                                         import IPython
+#                                         IPython.embed()
 
 
 
-        def call(self, inputs):
-                A = inputs[0]
-                H = inputs[1]
-                # A = adjacency matrix
-                # H = current feature vector ( = given features at layer 0 , encoded / hiddens thereafter)
-                current_H = H
-                for block in range(len(self.pre_act_convs)):
-                        block_acts = []
-                        for k in range(self.args._mix_hops+1):
-                                pre_w = self.pre_act_convs[block][k]([A, current_H])
-                                act = self.act_layers[block][k](pre_w)
-                                block_acts.append(act)
-                        current_H = keras.layers.Concatenate(axis = -1)(block_acts) #name = 'mix_'+str(args._mix_hops)+'hops_'+str(h_i)
+#         def call(self, inputs):
+#                 A = inputs[0]
+#                 H = inputs[1]
+#                 # A = adjacency matrix
+#                 # H = current feature vector ( = given features at layer 0 , encoded / hiddens thereafter)
+#                 current_H = H
+#                 for block in range(len(self.pre_act_convs)):
+#                         block_acts = []
+#                         for k in range(self.args._mix_hops+1):
+#                                 pre_w = self.pre_act_convs[block][k]([A, current_H])
+#                                 act = self.act_layers[block][k](pre_w)
+#                                 block_acts.append(act)
+#                         current_H = keras.layers.Concatenate(axis = -1)(block_acts) #name = 'mix_'+str(args._mix_hops)+'hops_'+str(h_i)
                         
-                return current_H
+#                 return current_H
 
-class TF2Decoder(keras.layers.Layer):
-        def __init__(self, args):
-                super(TF2Decoder, self).__init__()
-                self.args= args               
-                self.extra_fc_layer = keras.layers.Dense(args._extra_fc, activation = args._act) \
-                                        if (args._extra_fc is not None and args._extra_fc > 0) else None
+# class TF2Decoder(keras.layers.Layer):
+#         def __init__(self, args):
+#                 super(TF2Decoder, self).__init__()
+#                 self.args= args               
+#                 self.extra_fc_layer = keras.layers.Dense(args._extra_fc, activation = args._act) \
+#                                         if (args._extra_fc is not None and args._extra_fc > 0) else None
                 
-                label_act = 'softmax' if args._label_unique > 1 else 'sigmoid'
-                self.y_pred = keras.layers.Dense(args._label_unique, activation = label_act, name = 'y_pred')#(H)
+#                 label_act = 'softmax' if args._label_unique > 1 else 'sigmoid'
+#                 self.y_pred = keras.layers.Dense(args._label_unique, activation = label_act, name = 'y_pred')#(H)
 
 
-        def call(self, x):
-                # x = features from previous layer
-                if self.extra_fc_layer is not None:
-                        x = self.extra_fc_layer(x)
-                print("X DIMENSIONS ", x)
-                return self.y_pred(x)
+#         def call(self, x):
+#                 # x = features from previous layer
+#                 if self.extra_fc_layer is not None:
+#                         x = self.extra_fc_layer(x)
+#                 print("X DIMENSIONS ", x)
+#                 return self.y_pred(x)
 
 
-                # y_pred_slice = self.y_pred_slice([y_pred, self.inds])
-                # y_true_slice = self.y_true_slice([self.y_true, self.inds])
+#                 # y_pred_slice = self.y_pred_slice([y_pred, self.inds])
+#                 # y_true_slice = self._params['y_true']_slice([self._params['y_true'], self.inds])
 
-                # # SHOULD BE ELSEWHERE?
-                # slice_loss = self.slice_loss([y_true_slice, y_pred_slice])
-                # full_loss = self.full_loss([slice_loss, y_pred, self.inds])
-                # return full_loss
+#                 # # SHOULD BE ELSEWHERE?
+#                 # slice_loss = self.slice_loss([y_true_slice, y_pred_slice])
+#                 # full_loss = self.full_loss([slice_loss, y_pred, self.inds])
+#                 # return full_loss
 
 @tf.function
 def GCN_slice_loss(y_true, y_pred, inds, loss_function, already_full=True):
@@ -278,12 +278,15 @@ class GCN_Params(params.Params):
                 '''
 
                 fitted: typing.Union[bool, None] # fitted required, set once primitive is trained
-                model: keras.models.Model #typing.Union[keras.models.Model, None]d
-                pred_model: keras.models.Model
-                embed_model: keras.models.Model
-                weights: typing.Union[typing.Any, None]
-                pred_weights: typing.Union[typing.Any, None]
-                embed_weights: typing.Union[typing.Any, None]
+                model: typing.Union[tf.keras.Model, keras.models.Model, TF2FullModel]
+                _params: dict
+                label_encode: LabelEncoder
+                node_encode: LabelEncoder
+                #pred_model: keras.models.Model
+                #embed_model: keras.models.Model
+                #weights: typing.Union[typing.Any, None]
+                #pred_weights: typing.Union[typing.Any, None]
+                #embed_weights: typing.Union[typing.Any, None]
                 adj: typing.Union[tf.Tensor, tf.SparseTensor, tf.Variable, keras.layers.Input, np.ndarray, csr_matrix, None]
 
 class GCN_Hyperparams(hyperparams.Hyperparams):
@@ -315,7 +318,7 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
                 epochs = UniformInt(
                                 lower = 10,
                                 upper = 500,
-                                default = 15,
+                                default = 300,
                                 #q = 5e-8,                                                                                                                                                                 
                                 description = 'number of epochs to train',
                                 semantic_types=["http://schema.org/Integer", 'https://metadata.datadrivendiscovery.org/types/TuningParameter']
@@ -401,17 +404,13 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 def __init__(self, *, hyperparams : GCN_Hyperparams) -> None:
                         super(GCN, self).__init__(hyperparams = hyperparams)
+                        self._params = defaultdict()
 
 
                 def set_training_data(self, *, inputs : Input, outputs : Output) -> None:
                         learning_df, nodes_df, edges_df = self._parse_inputs(inputs)
 
                         #nodes_df = nodes_df.loc[learning_df['d3mIndex'].astype(np.int32)]
-                        print()
-                        print()
-                        print("EDGES DF ", edges_df)
-                        print()
-                        print()
                         ''' 
                             *******************************************
                                         NODE SUBSET
@@ -448,22 +447,21 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                         # to_fit = all edges (or all features in )
                         self.node_encode.fit(to_fit) 
-
                         node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32).ravel())
                         sources[sources.columns[0]] = self.node_encode.transform(sources.values.astype(np.int32))
                         dests[dests.columns[0]] = self.node_encode.transform(dests.values.astype(np.int32))
-                        self._num_edge_nodes = len(list(self.node_encode.classes_))
+                        self._params['num_training_nodes'] = len(list(self.node_encode.classes_))
 
                         
                         if self.hyperparams['line_graph']:
-                                self._num_training_nodes = edges_df.values.shape[0]
+                                self._params['num_training_nodes'] = edges_df.values.shape[0]
                                 self._adj = self._make_line_adj(edges_df) 
                                 self._input = self._make_line_inputs(edges_df)
                         else:
                                 # num_training_nodes = overall
-                                self._num_training_nodes = nodes_df.values.shape[0]     
+                                self._params['num_training_nodes'] = nodes_df.values.shape[0]     
                                 
-                                self.full_adj = self._make_adjacency(sources,dests)  
+                                self._params['full_adj'] = self._make_adjacency(sources,dests)  
                                 
                                 # features_df removes index, labels
                                 self._input = self._make_input_features(features_df,
@@ -471,8 +469,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                                                         incl_adj = self.hyperparams['include_adjacency'])
 
 
-                                self._adj = self.full_adj
-                                #self.full_adj[np.ix_(node_subset_enc, node_subset_enc)]
+                                self._adj = self._params['full_adj']
+                                #self._params['full_adj'][np.ix_(node_subset_enc, node_subset_enc)]
 
                                 # renormalize after taking node subsets
 
@@ -481,7 +479,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         target_types = ('https://metadata.datadrivendiscovery.org/types/SuggestedTarget',
                                                 'https://metadata.datadrivendiscovery.org/types/TrueTarget')
                         targets = u.get_columns_of_type(learning_df, target_types)
-        
+                        
                         self._parse_data(learning_df, targets, node_subset = node_subset)
                         self.fitted = False
 
@@ -508,9 +506,15 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         self.outputs_tensor = tf.constant(self.training_outputs)
                         self.inds_tensor = tf.constant(np.squeeze(self.training_inds), dtype = tf.int32)
                         
-                        #self.y_true = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
+                        #self._params['y_true'] = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
                         #self.inds = keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
 
+
+                def _profile(self, df):
+                        profile_ldf = Profiler(hyperparams=Profiler.metadata.get_hyperparams().defaults())
+                        profile_ldf.set_training_data(inputs=df)
+                        profile_ldf.fit()
+                        return profile_ldf.produce(inputs=df).value
 
                 def _parse_inputs(self, inputs : Input):
                         # Input is a dataset now
@@ -518,9 +522,13 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         edges_df = inputs['1']
                         nodes_df = inputs['2']
 
-                        learning_id, learning_df =u.get_resource(inputs, 'learningData')
+                        learning_id, learning_df = u.get_resource(inputs, 'learningData')
                         edges_id, edges_df = u.get_resource(inputs, '1')
                         nodes_id, nodes_df = u.get_resource(inputs, '2')
+
+                        learning_df = self._profile(learning_df)
+                        edges_df = self._profile(edges_df)
+                        nodes_df = self._profile(nodes_df)
 
                         #try: # resource id, resource
                         #         nodes_id, nodes_df = u.get_resource(inputs, '1')
@@ -638,7 +646,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         num_nodes = num_nodes if num_nodes is not None else nodes_df.shape[0]
 
                         # include adjacency matrix as features?  Or default to this if don't have 
-                        if incl_adj or (len(nodes_df.columns) > 2 and not (self._num_edge_nodes == self._num_training_nodes and just_adj)):
+                        if incl_adj or (len(nodes_df.columns) > 2 and not (self._params['num_training_nodes'] == self._params['num_training_nodes'] and just_adj)):
                                 if tensor:
                                         node_id = tf.cast(tf.eye(num_nodes), dtype = tf.float32)
                                         #node_id = tf.sparse.eye(nodes_df.shape[0])
@@ -647,10 +655,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         node_id = np.eye(num_nodes)
 
                         
-                                self._input_columns = num_nodes #if incl_adj else 0
+                                self._params['input_columns'] = num_nodes #if incl_adj else 0
                         # TO DO: preprocess features, e.g. if non-numeric / text?
                         # CHANGE (included but to be tested): inputs = adjacency if don't have features for all nodes
-                        if len(nodes_df.columns) > 2 and (self._num_edge_nodes == self._num_training_nodes and not just_adj):
+                        if len(nodes_df.columns) > 2 and (self._params['num_training_nodes'] == self._params['num_training_nodes'] and not just_adj):
 
                                 #try: # take semantic types = Attribute if possible
                                 semantic_types = ('https://metadata.datadrivendiscovery.org/types/Attribute',
@@ -661,7 +669,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                                 #        features = nodes_df.remove_columns(['label'])
 
-                                self._input_columns = self._input_columns+features.shape[-1] if incl_adj else features.shape[-1]
+                                self._params['input_columns'] = self._params['input_columns']+features.shape[-1] if incl_adj else features.shape[-1]
 
                                 if tensor:
                                         features = tf.convert_to_tensor(value=features)
@@ -737,11 +745,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 self.model = TF2FullModel(arg)
                                 #self.model = TF2Model(arg)
                                
-                                try:
-                                        self.embedding_model = self.model.encoder
-                                        self.pred_model = self.model.predictor
-                                except:
-                                        pass
+                                #try:
+                                # self.embedding_model = self.model.encoder
+                                # self.pred_model = self.model.predictor
+                                #except:
+                                #        pass
 
                                 # only a single loss
                                 # @tf.function
@@ -754,10 +762,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 self._adj = tf.convert_to_tensor(self._adj, tf.float32)
                                 self._input = tf.convert_to_tensor(self._input, tf.float32)
 
-                                #adj_input = keras.layers.Input(shape = (self._num_training_nodes,), name = 'adjacency', dtype = 'float32', sparse = self.hyperparams['sparse'])
-                                #feature_input = keras.layers.Input(shape = (self._input_columns,), name = 'features', dtype = 'float32')#, sparse =True)
-                                self.y_true = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
-                                self.inds = keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
+                                #adj_input = keras.layers.Input(shape = (self._params['num_training_nodes'],), name = 'adjacency', dtype = 'float32', sparse = self.hyperparams['sparse'])
+                                #feature_input = keras.layers.Input(shape = (self._params['input_columns'],), name = 'features', dtype = 'float32')#, sparse =True)
+                                self._params['y_true'] = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
+                                self._params['inds'] = keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
                                 label_act = 'softmax' if self._label_unique > 1 else 'sigmoid'
                                
                                 if self._task in ['classification', 'clf']:
@@ -771,16 +779,16 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 training_out = None
                                 for e in range(self._epochs):
                                         with tf.GradientTape()as tape:
-                                                features, pred = self.model([self._adj, self._input, self.y_true, self.inds])
+                                                features, pred = self.model([self._adj, self._input, self._params['y_true'], self._params['inds']])
                                                 if training_out is None:
                                                         ref_zeros = tf.Variable(initial_value=tf.zeros_like(pred), trainable=False,name='padded_targets')
                                                         #training_out = u.assign_scattered([self.training_outputs, pred, self.inds])
-                                                        training_out = u.assign_scattered([self.training_outputs, ref_zeros, self.inds])
+                                                        training_out = u.assign_scattered([self.training_outputs, ref_zeros, self._params['inds']])
                                       
-                                                loss = GCN_slice_loss(training_out, pred, self.inds, loss_function)      
+                                                loss = GCN_slice_loss(training_out, pred, self._params['inds'], loss_function)      
                                                 # print("TRAINING OUTS ", self.training_outputs.shape)
                                                 # print("PRED ", pred)
-                                                # loss = GCN_slice_loss(self.training_outputs, pred, self.inds , loss_function) #add_losses(self.training_outputs, pred, loss_functions, loss_weights)
+                                                # loss = GCN_slice_loss(self.training_outputs, pred, self._params['inds'] , loss_function) #add_losses(self.training_outputs, pred, loss_functions, loss_weights)
                                         #loss = tf.convert_to_tensor(loss)
                                         
                                         gradients = tape.gradient(loss, self.model.trainable_variables)
@@ -813,9 +821,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 
                                 if not self.hyperparams['line_graph']:
                                         
-                                        #self._num_training_nodes = node_subset.values.shape[0]
+                                        #self._params['num_training_nodes'] = node_subset.values.shape[0]
                                                 
-                                        _input_ = self._make_input_features(features_df, just_adj = not self.hyperparams['use_features'], incl_adj = self.hyperparams['include_adjacency'])
+                                        self._input = self._make_input_features(features_df, just_adj = not self.hyperparams['use_features'], incl_adj = self.hyperparams['include_adjacency'])
                                         #_input_ = self._make_input_features(nodes_df, just_adj = not self.hyperparams['use_features'], incl_adj = self.hyperparams['include_adjacency'])
                                         # PRODUCE CAN WORK ON ONLY SUBSAMPLED Adjacency matrix (already created)
                                         
@@ -823,14 +831,15 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         #_nodes = self.pred_model.input_shape[0][-1]
                                         #_features = self.pred_model.input_shape[1][-1]
                                         #_input = np.zeros((_nodes,_features))
-                                        
+                
                                         node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32).ravel())
-                                        _input = _input_  #[node_subset_enc] = _input_
-                                        _adj = self.full_adj
+                                        _input = self._input
+                                        #_input = _input_  #[node_subset_enc] = _input_
+                                        _adj = self._params['full_adj']
                                         
                                 else:
                                         # LINE GRAPH WIP
-                                        self._num_training_nodes = edges_df.values.shape[0]
+                                        self._params['num_training_nodes'] = edges_df.values.shape[0]
                                         _adj = self._make_line_adj(edges_df) 
                                         _input = self._make_line_inputs(edges_df)
                                         raise NotImplementedError()     
@@ -849,21 +858,27 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 #result = self.pred_model.predict([_adj, _input], steps = 1)#, batch_size = len(self.training_inds.shape[0]))
 
 
-                                features, pred = self.model([self._adj, self._input, self.y_true, self.inds])
+                                features, pred = self.model([self._adj, self._input, self._params['y_true'], self._params['inds']])
 
     
                                 result = pred.numpy()[self.training_inds]
                                 result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
-                                   
-                                if self.hyperparams['return_embedding']:
+                                import IPython
+                                IPython.embed()
+                                result = self.label_encode.inverse_transform(result) #.astype(np.int32)
+
+                                features= features.numpy()
+
+
+                                if self.hyperparams['return_embedding']:        
+                                        # try:
+                                        #         embed = self.embedding_model.predict([_adj, _input], steps = 1)
+                                        # except:
+                                        #         embed = self.embedding_model.predict([_adj, _input, self.training_inds], steps = 1)
                                         try:
-                                                embed = self.embedding_model.predict([_adj, _input], steps = 1)
+                                                result = np.concatenate([result, features[self.training_inds]], axis = -1)
                                         except:
-                                                embed = self.embedding_model.predict([_adj, _input, self.training_inds], steps = 1)
-                                        try:
-                                                result = np.concatenate([result, embed], axis = -1)
-                                        except:
-                                                result = np.concatenate([np.expand_dims(result, 1), embed], axis = -1)
+                                                result = np.concatenate([np.expand_dims(result, 1), features[self.training_inds]], axis = -1)
                                         #result = result[self.training_inds]
 
                         else:
@@ -884,7 +899,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         
                         
                         result_df = d3m_DataFrame(result, generate_metadata = True)
-                        result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)] 
+                        #result_df = result_df.loc[result_df.index.isin(learning_df['d3mIndex'].values)] 
                         
 
                         for column_index in range(result_df.shape[1]):
@@ -904,9 +919,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         #                print("learn_df = learn_df.get_loc(self.training_inds)")
                                         
 
-                        result_df.index = learn_df.index.copy()
+                        #result_df.index = learn_df.index.copy()
                         output = utils.append_columns(learn_df, result_df)
-                        
+                        output.set_index('d3mIndex', inplace=True)
                         return CallResult(output, True, 1)
 
                         # PREVIOUS RETURN MECHANISM
@@ -929,29 +944,34 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                 def get_params(self) -> GCN_Params:
 
-                                # fill in with model attributes 
-
+    
                                 return GCN_Params(
                                                 fitted = self.fitted,
                                                 model = self.model,
-                                                pred_model = self.pred_model,
-                                                embed_model = self.embedding_model,
-                                                weights = self.model.get_weights(),
-                                                pred_weights = self.pred_model.get_weights(),
-                                                embed_weights = self.embedding_model.get_weights(),
+                                                _params = self._params,
+                                                node_encode = self.node_encode,
+                                                label_encode = self.label_encode,
+                                                #pred_model = self.pred_model,
+                                                #embed_model = self.embedding_model,
+                                                #weights = self.model.get_weights(),
+                                                #pred_weights = self.pred_model.get_weights(),
+                                                #embed_weights = self.embedding_model.get_weights(),
                                                 adj = self._adj)
                 
                 def set_params(self, *, params: GCN_Params) -> None:
 
                                 # assign model attributes (e.g. in loading from pickle)
-
                                 self.fitted = params['fitted']
                                 self.model = params['model']
-                                self.model.set_weights(params['weights'])
-                                self.pred_model = params['pred_model']
-                                self.pred_model.set_weights(params['pred_weights'])
-                                self.embedding_model = params['embed_model']
-                                self.embedding_model.set_weights(params['embed_weights'])
+                                self._params = params['_params']
+                                self.node_encode = params['node_encode']
+                                self.label_encode = params['label_encode']
+                                
+                                #self.model.set_weights(params['weights'])
+                                #self.pred_model = params['pred_model']
+                                #self.pred_model.set_weights(params['pred_weights'])
+                                #self.embedding_model = params['embed_model']
+                                #self.embedding_model.set_weights(params['embed_weights'])
                                 self._adj = params['adj']
 
 
@@ -968,13 +988,13 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 #                                         feature_input = keras.layers.Input(tensor = self._input, name = 'features', dtype = 'float32')
 
 #                                         #adj_input = keras.layers.Input(tensor = self._adj, batch_shape = (None, tf.shape(self._adj)[-1]), name = 'adjacency', dtype = tf.float32)
-#                                         #feature_input = keras.layers.Input(tensor = self._input, batch_shape = (None, self._input_columns), name = 'features', dtype = tf.float32)
+#                                         #feature_input = keras.layers.Input(tensor = self._input, batch_shape = (None, self._params['input_columns']), name = 'features', dtype = tf.float32)
 #                                 else:
-#                                         adj_input = keras.layers.Input(shape = (self._num_training_nodes,), name = 'adjacency', dtype = 'float32', sparse = self.hyperparams['sparse'])
-#                                         feature_input = keras.layers.Input(shape = (self._input_columns,), name = 'features', dtype = 'float32')#, sparse =True)
+#                                         adj_input = keras.layers.Input(shape = (self._params['num_training_nodes'],), name = 'adjacency', dtype = 'float32', sparse = self.hyperparams['sparse'])
+#                                         feature_input = keras.layers.Input(shape = (self._params['input_columns'],), name = 'features', dtype = 'float32')#, sparse =True)
  
 
-#                                 self.y_true = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
+#                                 self._params['y_true'] = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
 #                                 self.inds = keras.layers.Input(tensor = self.inds_tensor, dtype='int32', name = 'training_inds')
 
                         
@@ -1025,17 +1045,17 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 #                                 if slice_and_dice:# Note: Y-true is an input tensor
 #                                         y_pred_slice = keras.layers.Lambda(u.semi_supervised_slice)([y_pred, self.inds])#, arguments = {'inds': self.training_inds})(y_pred)
                                         
-#                                         y_true_slice = keras.layers.Lambda(u.semi_supervised_slice)([self.y_true, self.inds])
+#                                         y_true_slice = keras.layers.Lambda(u.semi_supervised_slice)([self._params['y_true'], self.inds])
 
 #                                         slice_loss = keras.layers.Lambda(u.import_loss, arguments = {'function': loss_function, 'first': self._num_labeled_nodes})([y_true_slice, y_pred_slice])
                                         
 #                                         full_loss = keras.layers.Lambda(u.assign_scattered)([slice_loss, y_pred, self.inds])
 #                                 else:
-#                                         y_true_slice = self.y_true
+#                                         y_true_slice = self._params['y_true']
 #                                         y_pred_slice = y_pred
-#                                         full_loss = keras.layers.Lambda(u.import_loss, arguments = {'function': loss_function})([self.y_true, y_pred])
+#                                         full_loss = keras.layers.Lambda(u.import_loss, arguments = {'function': loss_function})([self._params['y_true'], y_pred])
                                         
-#                                         #full_loss = keras.layers.Lambda(u.import_loss, arguments = {'function': loss_function, 'first': self._num_labeled_nodes})([self.y_true, y_pred])
+#                                         #full_loss = keras.layers.Lambda(u.import_loss, arguments = {'function': loss_function, 'first': self._num_labeled_nodes})([self._params['y_true'], y_pred])
 #                                         slice_loss = full_loss
 #                                 outputs = []
 #                                 loss_functions = []
@@ -1046,7 +1066,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 # )
                                 
 #                                 # fit keras
-#                                 self.model = keras.models.Model(inputs = [adj_input, feature_input, self.y_true, self.inds], 
+#                                 self.model = keras.models.Model(inputs = [adj_input, feature_input, self._params['y_true'], self.inds], 
 #                                                                                                 outputs = outputs)      
 #                                 self.pred_model = keras.models.Model(inputs =  [adj_input, feature_input, self.inds], 
 #                                                                                                         outputs = [y_pred_slice])    
@@ -1060,7 +1080,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 #                         except Exception as e:
 #                                 pass
 
-#                         shape_ref = tf.zeros(shape=(self._num_training_nodes, self._label_unique))
+#                         shape_ref = tf.zeros(shape=(self._params['num_training_nodes'], self._label_unique))
 #                         model_targets = u.assign_scattered([self.training_outputs, shape_ref, self.inds])
                        
 #                         self.model.fit(x = [self._adj, self._input], 
@@ -1068,7 +1088,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 #                                         #y = [self.training_outputs],
 #                                         shuffle = False, epochs = self._epochs, 
 #                                         steps_per_epoch = 1, 
-#                                         #batch_size = self._num_training_nodes,
+#                                         #batch_size = self._params['num_training_nodes'],
 #                                         verbose = 1
 #                                 ) 
                         

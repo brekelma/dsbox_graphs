@@ -285,14 +285,34 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
     def _parse_inputs(self, inputs : Input, return_all = False):
         # Input is a dataset now... Don't really need learning_df, edge_df
         #learning_id, learning_df =u.get_resource(inputs, 'learningData')
+
         learning_df = inputs['learningData']
-        edges_df = inputs['1']
-        nodes_df = inputs['2']
+        try:
+            edges_df = inputs['1']
+            nodes_df = inputs['2']
+        except:
+            # networkx hacks
+            graph_dataframe0 = inputs['0']
+            
+            temp_json = inputs.to_json_structure()
+            location_uri = temp_json['location_uris'][0]
+            path_to_graph0 = location_uri[:-15] + "graphs/" + graph_dataframe0.at[0,'filename'] 
+            
+
+            gml = networkx.read_gml(path=path_to_graph0[7:]) 
+
+            edges = networkx.convert_matrix.to_pandas_edgelist(gml)
+            edges_df = d3m_DataFrame(edges)
+            edges_df.columns=['node1','node2'] if len(list(edges_df))==2 else ['node1','node2', 'weight']
+
+            nodes_df = d3m_DataFrame(np.array([])) #unneccessary
+            learning_df.columns = [c if not 'G1.nodeID' in c else 'nodeID' for c in learning_df.columns ] 
+
+
         #edges_id, edges_df = u.get_resource(inputs, '1')
         #nodes_id, nodes_df = u.get_resource(inputs, '2')
                 
         #return learning_df, nodes_df, edges_df
-
         
         self.node_encode = LabelEncoder()
         sources, dests = self._get_source_dest(edges_df)
@@ -397,10 +417,13 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
                 col_dict['semantic_types'] = ('http://schema.org/Float', 'https://metadata.datadrivendiscovery.org/types/Attribute')
 
                 result_df.metadata = result_df.metadata.update((ALL_ELEMENTS, column_index), col_dict)
+            
             result_df.index = learn_df.index.copy()
             
             
             output = utils.append_columns(learn_df, result_df)
+            #import IPython
+            #IPython.embed()
             #output.set_index('d3mIndex', inplace=True)
             return CallResult(output, True, 1)
         
