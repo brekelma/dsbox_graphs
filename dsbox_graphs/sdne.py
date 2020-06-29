@@ -422,8 +422,7 @@ class SDNE(UnsupervisedLearnerPrimitiveBase[Input, Output, SDNE_Params, SDNE_Hyp
             
             
             output = utils.append_columns(learn_df, result_df)
-            #import IPython
-            #IPython.embed()
+            
             #output.set_index('d3mIndex', inplace=True)
             return CallResult(output, True, 1)
         

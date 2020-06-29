@@ -279,9 +279,9 @@ class GCN_Params(params.Params):
 
                 fitted: typing.Union[bool, None] # fitted required, set once primitive is trained
                 model: typing.Union[tf.keras.Model, keras.models.Model, TF2FullModel]
-                _params: dict
-                label_encode: LabelEncoder
-                node_encode: LabelEncoder
+                _params: defaultdict
+                #label_encode: LabelEncoder
+                #node_encode: LabelEncoder
                 #pred_model: keras.models.Model
                 #embed_model: keras.models.Model
                 #weights: typing.Union[typing.Any, None]
@@ -316,8 +316,8 @@ class GCN_Hyperparams(hyperparams.Hyperparams):
                 
                 # epochs
                 epochs = UniformInt(
-                                lower = 10,
-                                upper = 500,
+                                lower = 9,
+                                upper = 1001,
                                 default = 300,
                                 #q = 5e-8,                                                                                                                                                                 
                                 description = 'number of epochs to train',
@@ -429,7 +429,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         features_df = nodes_df
                         features_df = features_df.iloc[:, 2:] if 'nodeID' in features_df.columns and 'd3mIndex' in features_df.columns else features_df
 
-                        self.node_encode = LabelEncoder()
+                        self._params['node_encode'] = LabelEncoder()
 
                         sources, dests = self._get_source_dest(edges_df)
                         sources = sources.astype(np.int32)
@@ -438,7 +438,7 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                         to_fit = np.sort(np.concatenate([sources.values,dests.values], axis = -1).astype(np.int32).ravel())
  
                         #( Hacky workaround for edges_df / learning_df ID mismatch )
-                        if np.amin(to_fit) == 1 and 'nodeID' in learning_df.columns and int(np.amin(learning_df['nodeID'].values)) == 0:
+                        if np.amin(to_fit) == 1 and 'nodeID' in nodes_df.columns and int(np.amin(nodes_df['nodeID'].values)) == 0:
                                 edges_df['node1'] = edges_df['node1'].values.astype(int) - 1
                                 edges_df['node2'] = edges_df['node2'].values.astype(int) - 1
                                 sources['node1']-=1
@@ -446,11 +446,11 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 to_fit -= 1
 
                         # to_fit = all edges (or all features in )
-                        self.node_encode.fit(to_fit) 
-                        node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32).ravel())
-                        sources[sources.columns[0]] = self.node_encode.transform(sources.values.astype(np.int32))
-                        dests[dests.columns[0]] = self.node_encode.transform(dests.values.astype(np.int32))
-                        self._params['num_training_nodes'] = len(list(self.node_encode.classes_))
+                        self._params['node_encode'].fit(to_fit) 
+                        node_subset_enc = self._params['node_encode'].transform(node_subset.values.astype(np.int32).ravel())
+                        sources[sources.columns[0]] = self._params['node_encode'].transform(sources.values.astype(np.int32))
+                        dests[dests.columns[0]] = self._params['node_encode'].transform(dests.values.astype(np.int32))
+                        self._params['num_training_nodes'] = len(list(self._params['node_encode'].classes_))
 
                         
                         if self.hyperparams['line_graph']:
@@ -486,24 +486,26 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                 def _parse_data(self, learning_df, targets, node_subset = None):
                         # indices = node encode = index in nodes_df (robust?)
 
-                        self.training_inds = self.node_encode.transform(learning_df['nodeID'].values.astype(np.int32))
+                        self.training_inds = self._params['node_encode'].transform(learning_df['nodeID'].values.astype(np.int32))
 
                         self._label_unique = np.unique(targets.values).shape[0]
 
-                        try:
-                                self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values.ravel()), \
-                                                                        num_classes = np.unique(targets.values).shape[0])
-                        except:
-                                self.label_encode = LabelEncoder()
-                                self.training_outputs = to_categorical(self.label_encode.fit_transform(targets.values.ravel()), \
-                                        num_classes = np.unique(targets.values).shape[0])
-                                
+                        if np.unique(targets.values).shape[0] > 1 or np.unique(targets.values)[0]!='':
+                            try:
+                                    self.training_outputs = to_categorical(self._params['label_encode'].fit_transform(targets.values.ravel()), \
+                                                                            num_classes = np.unique(targets.values).shape[0])
+                            except:
+                                    self._params['label_encode'] = LabelEncoder()
+                                    self.training_outputs = to_categorical(self._params['label_encode'].fit_transform(targets.values.ravel()), \
+                                            num_classes = np.unique(targets.values).shape[0])
+                            
+                            #self._num_labeled_nodes = self.training_outputs.shape[0]
+                            self.outputs_tensor = tf.constant(self.training_outputs)
 
-                        self._num_labeled_nodes = self.training_outputs.shape[0]
+                        
 
 
                         # CREATE INPUT TENSORS FOR KERAS TRAINING
-                        self.outputs_tensor = tf.constant(self.training_outputs)
                         self.inds_tensor = tf.constant(np.squeeze(self.training_inds), dtype = tf.int32)
                         
                         #self._params['y_true'] = keras.layers.Input(tensor = self.outputs_tensor, name = 'y_true', dtype = 'float32')
@@ -831,8 +833,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                         #_nodes = self.pred_model.input_shape[0][-1]
                                         #_features = self.pred_model.input_shape[1][-1]
                                         #_input = np.zeros((_nodes,_features))
-                
-                                        node_subset_enc = self.node_encode.transform(node_subset.values.astype(np.int32).ravel())
+                                        
+                                        node_subset_enc = self._params['node_encode'].transform(node_subset.values.astype(np.int32).ravel())
                                         _input = self._input
                                         #_input = _input_  #[node_subset_enc] = _input_
                                         _adj = self._params['full_adj']
@@ -863,9 +865,10 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
     
                                 result = pred.numpy()[self.training_inds]
                                 result = np.argmax(result, axis = -1) #if not self.hyperparams['return_embedding'] else result
-                                import IPython
-                                IPython.embed()
-                                result = self.label_encode.inverse_transform(result) #.astype(np.int32)
+                                #import IPython
+                                #IPython.embed()
+                                result = self._params['label_encode'].inverse_transform(result) #.astype(np.int32)
+                                #result = self._params['label_encode'].inverse_transform(result) #.astype(np.int32)
 
                                 features= features.numpy()
 
@@ -921,7 +924,9 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
 
                         #result_df.index = learn_df.index.copy()
                         output = utils.append_columns(learn_df, result_df)
-                        output.set_index('d3mIndex', inplace=True)
+                        #output.set_index('d3mIndex', inplace=True)
+                        #import IPython
+                        #IPYtho
                         return CallResult(output, True, 1)
 
                         # PREVIOUS RETURN MECHANISM
@@ -949,8 +954,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                                 fitted = self.fitted,
                                                 model = self.model,
                                                 _params = self._params,
-                                                node_encode = self.node_encode,
-                                                label_encode = self.label_encode,
+                                                #node_encode = self._params['node_encode'],
+                                                #label_encode = self._params['label_encode'],
                                                 #pred_model = self.pred_model,
                                                 #embed_model = self.embedding_model,
                                                 #weights = self.model.get_weights(),
@@ -964,8 +969,8 @@ class GCN(SupervisedLearnerPrimitiveBase[Input, Output, GCN_Params, GCN_Hyperpar
                                 self.fitted = params['fitted']
                                 self.model = params['model']
                                 self._params = params['_params']
-                                self.node_encode = params['node_encode']
-                                self.label_encode = params['label_encode']
+                                #self.node_encode = params['node_encode']
+                                #self.label_encode = params['label_encode']
                                 
                                 #self.model.set_weights(params['weights'])
                                 #self.pred_model = params['pred_model']
