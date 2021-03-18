@@ -12,6 +12,7 @@ setup(
     author="Rob Brekelmans",
     author_email="brekelma@usc.edu",
     keywords='d3m_primitive',
+    license="Apache-2.0",
     packages=find_packages(),
     url='https://github.com/brekelma/dsbox_graphs',
     download_url='https://github.com/brekelma/dsbox_graphs',
