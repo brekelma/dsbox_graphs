@@ -9,7 +9,7 @@ setup(
     name="dsbox_graphs",
     version="1.0.0",
     description="Graph Embedding and Convolution primitives",
-    license="AGPL-3.0",
+    license="Apache-2.0",
     author="Rob Brekelmans",
     author_email="brekelma@usc.edu",
     keywords='d3m_primitive',
