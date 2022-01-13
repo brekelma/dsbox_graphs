@@ -16,7 +16,7 @@ setup(
     packages=find_packages(),
     url='https://github.com/brekelma/dsbox_graphs',
     download_url='https://github.com/brekelma/dsbox_graphs',
-    install_requires=['pillow==6.2.1'],
+    install_requires=['pillow==9.0.0'],
     long_description=long_description,
     include_package_data = True,
     classifiers=[
